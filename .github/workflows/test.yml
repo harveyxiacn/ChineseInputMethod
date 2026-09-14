@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libopencc-dev
+      - run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev
       - run: cmake -S native/fcitx5 -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build -j2
       - run: ctest --test-dir build --output-on-failure
