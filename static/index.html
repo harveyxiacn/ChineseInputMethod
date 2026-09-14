@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f2eb">
+  <title>双声 · Shuangsheng</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="workspace">
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="Shuangsheng home"><span class="brand-mark" lang="zh">双</span><span>双声 <span class="brand-roman">Shuangsheng</span></span></a>
+      <span class="local-badge"><span class="dot"></span> Your words, on your machine</span>
+    </header>
+    <section class="intro" aria-labelledby="title">
+      <div><p class="eyebrow">TWO LANGUAGES. YOUR VOICE.</p><h1 id="title">A little closer to<br><span lang="zh">你想说的话。</span></h1><p class="subtitle">Write with pinyin. Speak in Mandarin or Cantonese.<br>Make room for the words that come naturally.</p></div>
+      <div class="intro-art" aria-hidden="true"><span class="art-word">言</span><span class="art-caption">THOUGHT → WORD</span></div>
+    </section>
+    <div class="editor-grid">
+      <section class="document-panel" aria-labelledby="document-title">
+        <div class="panel-heading"><div><span class="section-number">01</span><h2 id="document-title">Your words</h2></div><label class="script-label" for="script">Characters <select id="script"><option value="simplified">简体 · Simplified</option><option value="traditional">繁體 · Traditional</option></select></label></div>
+        <label class="sr-only" for="document">Your Chinese text</label>
+        <textarea id="document" spellcheck="false" placeholder="从一句话开始…&#10;Start with a thought." aria-describedby="document-hint"></textarea>
+        <div class="document-footer"><span id="character-count">0 characters</span><div class="document-actions"><button id="clear" class="text-button" type="button">Clear</button><button id="download" class="text-button" type="button">Download</button><button id="copy" class="small-button" type="button">Copy text <span aria-hidden="true">↗</span></button></div></div>
+        <p id="document-hint" class="document-hint">Click anywhere in your text to choose where the next words go.</p>
+      </section>
+      <aside class="input-panel" aria-label="Input tools">
+        <section class="pinyin-section" aria-labelledby="pinyin-title"><div class="tool-heading"><span class="section-number">02</span><h2 id="pinyin-title">Type in pinyin</h2><span class="tool-symbol" aria-hidden="true">Aa</span></div><label class="sr-only" for="pinyin">Pinyin syllables</label><input id="pinyin" type="text" placeholder="Try nihao or zhongguo" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="pinyin-hint" aria-controls="candidates"><div id="candidates" class="candidates" role="group" aria-label="Chinese candidates"><span class="candidate-empty">Your characters will appear here.</span></div><p id="pinyin-hint" class="input-hint"><kbd>Space</kbd> select · <kbd>1–9</kbd> choose · <kbd>←</kbd> <kbd>→</kbd> browse<br><kbd>Enter</kbd> insert as typed · <kbd>Esc</kbd> reset</p></section>
+        <section class="voice-section" aria-labelledby="voice-title"><div class="tool-heading"><span class="section-number">03</span><h2 id="voice-title">Speak your mind</h2><span class="tool-symbol" aria-hidden="true">◖◗</span></div><label for="language" class="field-label">Spoken language</label><select id="language"><option value="zh">普通话 · Mandarin</option><option value="yue">廣東話 · Cantonese</option><option value="auto">Detect automatically</option></select><button id="record" class="record-button" type="button"><span class="record-icon" aria-hidden="true">●</span><span id="record-label">Start recording</span><span id="record-time" aria-hidden="true"></span></button><div class="upload-row"><span>Already have a recording?</span><label class="upload-label" for="audio-file">Upload audio<input id="audio-file" type="file" accept="audio/*,.webm,.mp4,.m4a,.wav,.mp3,.ogg,.flac"></label></div><p id="speech-status" class="speech-status">Checking local speech service…</p></section>
+        <div class="privacy-note"><span aria-hidden="true">⌂</span><p>Transcribed by your local speech model. Audio is sent only to this app’s server. Uploads: up to 16 MiB and 2 minutes. Microphone: up to 1:55.</p></div>
+      </aside>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <footer class="page-footer"><span lang="zh">落笔有声，表达自由。</span><span>PINYIN + VOICE / LOCAL FIRST</span></footer>
+  </main>
+</body>
+</html>

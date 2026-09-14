@@ -1,0 +1,166 @@
+# Authored starter vocabulary; simplified<TAB>traditional<TAB>pinyin<TAB>weight.
+你好	你好	ni hao	10000
+您好	您好	nin hao	9500
+谢谢	謝謝	xie xie	9500
+再见	再見	zai jian	9000
+中国	中國	zhong guo	9500
+中文	中文	zhong wen	9500
+输入法	輸入法	shu ru fa	9000
+拼音	拼音	pin yin	9000
+语音	語音	yu yin	9000
+普通话	普通話	pu tong hua	9000
+粤语	粵語	yue yu	9000
+广东话	廣東話	guang dong hua	9000
+香港	香港	xiang gang	9000
+北京	北京	bei jing	9000
+上海	上海	shang hai	9000
+广州	廣州	guang zhou	9000
+深圳	深圳	shen zhen	9000
+台湾	臺灣	tai wan	9000
+新加坡	新加坡	xin jia po	9000
+世界	世界	shi jie	9000
+欢迎	歡迎	huan ying	9000
+欢迎使用	歡迎使用	huan ying shi yong	9500
+我爱你	我愛你	wo ai ni	9500
+早上好	早上好	zao shang hao	9000
+晚上好	晚上好	wan shang hao	9000
+对不起	對不起	dui bu qi	9000
+没关系	沒關係	mei guan xi	9000
+不客气	不客氣	bu ke qi	9000
+很高兴	很高興	hen gao xing	9000
+认识你	認識你	ren shi ni	9000
+今天	今天	jin tian	8500
+明天	明天	ming tian	8500
+昨天	昨天	zuo tian	8500
+天气	天氣	tian qi	8500
+很好	很好	hen hao	8500
+我们	我們	wo men	8500
+你们	你們	ni men	8500
+他们	他們	ta men	8500
+什么	什麼	shen me	8500
+怎么	怎麼	zen me	8500
+可以	可以	ke yi	8500
+喜欢	喜歡	xi huan	8500
+学习	學習	xue xi	8500
+工作	工作	gong zuo	8500
+电脑	電腦	dian nao	8500
+手机	手機	shou ji	8500
+朋友	朋友	peng you	8500
+时间	時間	shi jian	8500
+现在	現在	xian zai	8500
+开始	開始	kai shi	8500
+录音	錄音	lu yin	8500
+停止	停止	ting zhi	8500
+识别	識別	shi bie	8500
+文字	文字	wen zi	8500
+简体	簡體	jian ti	8500
+繁体	繁體	fan ti	8500
+测试	測試	ce shi	8500
+开源	開源	kai yuan	8500
+软件	軟件	ruan jian	8500
+西安	西安	xi an	8500
+先	先	xian	2500
+女	女	nv	2500
+绿	綠	lv	2500
+旅行	旅行	lv xing	8500
+我	我	wo	4000
+你	你	ni	4000
+他	他	ta	4000
+她	她	ta	3900
+它	它	ta	3800
+好	好	hao	4000
+是	是	shi	4000
+时	時	shi	3500
+事	事	shi	3400
+十	十	shi	3300
+的	的	de	4000
+地	地	de	3000
+得	得	de	2900
+了	了	le	4000
+吗	嗎	ma	4000
+妈	媽	ma	3000
+马	馬	ma	2900
+呢	呢	ne	4000
+不	不	bu	4000
+在	在	zai	4000
+爱	愛	ai	4000
+有	有	you	4000
+人	人	ren	4000
+中	中	zhong	3500
+国	國	guo	3500
+文	文	wen	3500
+学	學	xue	3500
+生	生	sheng	3500
+大	大	da	3500
+小	小	xiao	3500
+天	天	tian	3500
+气	氣	qi	3500
+很	很	hen	3500
+想	想	xiang	3500
+要	要	yao	3500
+去	去	qu	3500
+来	來	lai	3500
+看	看	kan	3500
+说	說	shuo	3500
+听	聽	ting	3500
+写	寫	xie	3500
+吃	吃	chi	3500
+喝	喝	he	3500
+水	水	shui	3500
+茶	茶	cha	3500
+一	一	yi	3500
+二	二	er	3500
+三	三	san	3500
+四	四	si	3500
+五	五	wu	3500
+六	六	liu	3500
+七	七	qi	3400
+八	八	ba	3500
+九	九	jiu	3500
+零	零	ling	3500
+谢谢你	謝謝你	xie xie ni	9600
+你好世界	你好世界	ni hao shi jie	10000
+人工智能	人工智能	ren gong zhi neng	9000
+人工	人工	ren gong	8500
+智能	智能	zhi neng	8500
+程序	程序	cheng xu	8500
+编程	編程	bian cheng	8500
+开发	開發	kai fa	8500
+语言	語言	yu yan	8500
+模型	模型	mo xing	8500
+数据	數據	shu ju	8500
+谢谢大家	謝謝大家	xie xie da jia	9500
+吃饭	吃飯	chi fan	8500
+喝水	喝水	he shui	8500
+咖啡	咖啡	ka fei	8500
+快乐	快樂	kuai le	8500
+生日快乐	生日快樂	sheng ri kuai le	9000
+新年快乐	新年快樂	xin nian kuai le	9000
+工	工	gong	3500
+能	能	neng	3500
+智	智	zhi	3500
+这	這	zhe	3500
+那	那	na	3500
+和	和	he	4000
+会	會	hui	3500
+用	用	yong	3500
+为	為	wei	3500
+到	到	dao	3500
+都	都	dou	3500
+也	也	ye	3500
+就	就	jiu	4000
+可	可	ke	3500
+以	以	yi	3400
+多	多	duo	3500
+少	少	shao	3500
+年	年	nian	3500
+月	月	yue	3500
+日	日	ri	3500
+请	請	qing	3500
+问	問	wen	4000
+帮	幫	bang	3500
+帮忙	幫忙	bang mang	8500
+需要	需要	xu yao	8500
+问题	問題	wen ti	8500
+解决	解決	jie jue	8500
+谢谢您的帮助	謝謝您的幫助	xie xie nin de bang zhu	9000
