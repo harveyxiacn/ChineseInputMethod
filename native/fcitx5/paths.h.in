@@ -1,0 +1,2 @@
+#pragma once
+#define SHUANGSHENG_PROJECT_ROOT R"path(@SHUANGSHENG_PROJECT_ROOT@)path"

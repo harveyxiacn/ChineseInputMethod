@@ -1,8 +1,78 @@
 # 双声 · Shuangsheng
 
-A local Chinese input pad with pinyin typing and Mandarin/Cantonese dictation.
-The browser provides the editor; a Python service performs all input processing
-on your machine. No API keys or hosted speech service are used.
+A local Chinese input method with pinyin typing and Mandarin/Cantonese dictation.
+Use the native **Fcitx5 keyboard on Linux** to type directly into applications,
+or the cross-platform browser input pad. Speech runs on your machine; no API
+keys or hosted speech service are used.
+
+## System-wide Linux keyboard
+
+Install Fcitx5 and its integrations. On Arch/CachyOS:
+
+```bash
+sudo pacman -S --needed fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool cmake gcc
+```
+
+Set up voice dependencies and weights using the instructions below, then:
+
+```bash
+python3 scripts/install_native.py
+```
+
+This builds the native addon, installs it under `~/.local`, and enables
+`shuangsheng.service` with your graphical login session. It adds a keyboard
+profile only if you have no existing Fcitx5 profile; existing users should add
+**Shuangsheng 双声** through `fcitx5-configtool`. Keep this checkout and its
+`.venv` at their current location, or rebuild/reinstall after moving them.
+PipeWire's `pw-record` is required for microphone capture.
+
+For niri, set `XMODIFIERS "@im=fcitx"`, `QT_IM_MODULE "fcitx"`, and
+`SDL_IM_MODULE "fcitx"` in your `environment` block. The installer can add these
+to an existing environment file, with backup and `niri validate`:
+
+```bash
+python3 scripts/install_native.py --niri-environment ~/.config/niri/cfg/misc.kdl
+```
+
+Leave `GTK_IM_MODULE` unset for native GTK Wayland applications. Restart open
+applications to pick up environment changes, or log out and back in. Some
+Chromium/Electron versions need `--enable-wayland-ime
+--wayland-text-input-version=3`. Applications must support the desktop's text
+input protocol or an installed Fcitx GTK/Qt integration; this is not raw key
+injection into arbitrary software. The default service targets non-GNOME,
+non-KDE Linux sessions such as niri; other desktops may require their own
+Fcitx startup configuration. See [Fcitx's Wayland setup](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland).
+
+| Shortcut (with Shuangsheng active) | Action |
+| --- | --- |
+| Ctrl+Space | Switch English / Chinese using Fcitx's default trigger |
+| Letters, Space or 1–9 | Compose pinyin and select a candidate |
+| Up/Down, PageUp/PageDown | Browse candidates and pages |
+| Enter / Escape | Insert literal pinyin / cancel composition |
+| Ctrl+Alt+Space | Start recording; press again to stop and transcribe |
+| Ctrl+Alt+M / Ctrl+Alt+Y | Select Mandarin / Cantonese |
+| Ctrl+Alt+T | Toggle simplified / traditional output |
+| Escape while dictating | Cancel recording or transcription |
+
+Stay in the same text field while dictating. Changing focus cancels dictation;
+text is committed only into the original focused context. Recording ends after
+115 seconds at most. Password/sensitive fields bypass this engine. Language
+and script selections currently last for the Fcitx process lifetime.
+The native adapter supports dictionary phrases, initials, prefixes and candidate
+pages; it does not yet use the browser engine's sentence beam search.
+
+```bash
+systemctl --user status shuangsheng.service
+journalctl --user -u shuangsheng.service -n 30
+# Stop now and disable automatic startup:
+systemctl --user disable --now shuangsheng.service
+```
+
+If disabling it permanently, also remove the Shuangsheng environment entries
+and `~/.config/environment.d/70-shuangsheng.conf`, along with
+`~/.local/share/dbus-1/services/org.fcitx.Fcitx5.service` (which activates this
+service on demand), then log in again. Installer
+backups use the suffix `.before-shuangsheng`.
 
 ## Run
 
@@ -61,10 +131,9 @@ and busy inference return visible errors. There is no cloud fallback.
 
 ## Design and scope
 
-This version is a browser input pad, not an installed operating-system keyboard.
-It does not inject text into other applications; use copy/paste. A native IME
-would add an IBus/Fcitx5 adapter on Linux, TSF on Windows, or InputMethodKit on
-macOS, reusing the candidate and transcription services.
+The Linux Fcitx5 addon provides system-wide input in compatible applications.
+The browser pad remains available on other operating systems. Native Windows
+TSF and macOS InputMethodKit adapters are not implemented.
 
 - `static/`: responsive, keyboard-accessible editor; no frontend build required.
 - `ime/pinyin.py`: indexed dictionary lookup, syllable normalization, prefix and
@@ -76,6 +145,10 @@ macOS, reusing the candidate and transcription services.
 - `ime/conversion.py`: OpenCC simplified/traditional conversion.
 - `ime/server.py`: standard-library HTTP service restricted to localhost and
   same-origin requests. No audio persistence or document storage.
+- `native/fcitx5/`: native C++ candidate UI and application text insertion.
+- `ime/native_voice.py`: bounded PipeWire recording and local transcription;
+  temporary recordings are deleted on completion or normal cancellation.
+- `scripts/install_native.py`: user installation and login-session startup.
 
 Pinyin ranking uses basic dictionary weights and a small authored common-word
 overlay; it does not reproduce Rime's statistical ranking or learn your habits.
@@ -125,3 +198,9 @@ including model loading on the development machine. The loaded model's `yue`
 support and Cantonese request routing were verified; Cantonese recognition
 accuracy has not yet been evaluated with a real Cantonese test corpus. Sample
 audio and downloaded model weights are excluded from the repository.
+
+The native version also passed real Fcitx D-Bus preedit/commit tests for pinyin,
+number selection, script switching, syllable boundaries, empty/unknown input,
+Escape cancellation, and password-field bypass. Run
+`python3 native/fcitx5/smoke_runtime.py` to repeat them after installation.
+These checks use a dedicated input context and do not record your microphone.

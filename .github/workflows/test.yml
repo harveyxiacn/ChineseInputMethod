@@ -18,3 +18,10 @@ jobs:
           node-version: '22'
       - run: python -m unittest discover -v
       - run: node --check static/app.js
+  native-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake g++ libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev
+      - run: cmake -S native/fcitx5 -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build -j2

@@ -14,6 +14,13 @@ Keep dictionary changes reproducible through `scripts/build_dictionary.py` and
 preserve upstream source and licensing notices. Do not commit model weights,
 virtual environments, credentials, or private recordings.
 
+Native keyboard changes should build with `cmake -S native/fcitx5 -B
+.cache/native-build && cmake --build .cache/native-build`. After installing,
+run `python3 native/fcitx5/smoke_runtime.py` inside a desktop session with
+PyGObject installed. This exercises a dedicated Fcitx input context and never
+uses the microphone. Keep focus-change cancellation and sensitive-field bypass
+working when changing dictation behavior.
+
 Original contributions use the project's MIT license. Third-party dictionary
 changes retain the applicable upstream license. Please discuss native OS
 adapters, alternate recognizers, and large architecture changes in an issue
