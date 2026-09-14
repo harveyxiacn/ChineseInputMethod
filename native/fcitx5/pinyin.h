@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "paths.h"
+#include <libime/core/historybigram.h>
 #include <libime/core/languagemodel.h>
 #include <libime/core/userlanguagemodel.h>
 #include <libime/pinyin/pinyincontext.h>

@@ -283,4 +283,8 @@ class Factory : public AddonFactory {
     AddonInstance *create(AddonManager *manager) override { return new Engine(manager->instance()); }
 };
 }
+#ifdef FCITX_ADDON_FACTORY_V2
 FCITX_ADDON_FACTORY_V2(shuangsheng, Factory)
+#else
+FCITX_ADDON_FACTORY(Factory)
+#endif

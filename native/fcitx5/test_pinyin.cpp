@@ -45,7 +45,12 @@ int main() {
         }
         {
             shuangsheng::Pinyin restored(storage);
-            require(restored.ime()->dict()->lookupWord(libime::PinyinDictionary::UserDict,"shuang'sheng'ce'shi","双声测诗").has_value(), "User dictionary did not survive restart");
+            libime::PinyinContext context(restored.ime());
+            context.type("shuangshengceshi");
+            bool found=false;
+            for (const auto &candidate:context.candidates())
+                if (candidate.toString()=="双声测诗") found=true;
+            require(found, "Learned candidate did not survive restart");
             require(!restored.ime()->model()->history().isUnknown("双声测诗"), "Learning history did not survive restart");
         }
         std::filesystem::remove_all(storage);
