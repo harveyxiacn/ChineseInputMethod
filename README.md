@@ -10,7 +10,7 @@ keys or hosted speech service are used.
 Install Fcitx5 and its integrations. On Arch/CachyOS:
 
 ```bash
-sudo pacman -S --needed fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool cmake gcc
+sudo pacman -S --needed fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool libime opencc boost cmake gcc
 ```
 
 Set up voice dependencies and weights using the instructions below, then:
@@ -58,8 +58,21 @@ Stay in the same text field while dictating. Changing focus cancels dictation;
 text is committed only into the original focused context. Recording ends after
 115 seconds at most. Password/sensitive fields bypass this engine. Language
 and script selections currently last for the Fcitx process lifetime.
-The native adapter supports dictionary phrases, initials, prefixes and candidate
-pages; it does not yet use the browser engine's sentence beam search.
+The native adapter uses libime's full pinyin dictionary and statistical language
+model, including sentence composition and phrase-by-phrase selection. Type a
+full sentence such as `wojintianxiangquchaoshimaidongxi`, or select shorter
+phrases from the candidate list while continuing to compose the remainder.
+This native engine is independent of the browser pad's basic TSV decoder.
+The installed libime dictionary on the development machine has 300,234 entries.
+Selected words and phrases improve future ranking. Learning stays locally in
+`~/.local/share/shuangsheng/{user.dict,history}` (or under `XDG_DATA_HOME`).
+
+Dictation validates the recorded WAV even when PipeWire returns its normal
+interrupted-recording exit status. Silence, missing input devices, and model
+errors are shown in the candidate panel. To select a particular PipeWire source,
+set `IME_RECORD_TARGET` in the keyboard service environment; otherwise it uses
+your default microphone. The recording/transcription completion protocol also
+handles Fcitx reaping worker processes before the addon polls their exit status.
 
 ```bash
 systemctl --user status shuangsheng.service
@@ -163,6 +176,7 @@ and is lost on reload unless copied or downloaded.
 | --- | --- | --- |
 | [Rime Luna Pinyin](https://github.com/rime/rime-luna-pinyin) | Bundled source dictionary and derived TSV | LGPL-3.0; source and terms in `ime/data/` |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Local inference using CTranslate2 | MIT |
+| [libime](https://github.com/fcitx/libime) | Native pinyin dictionary, language model, and learning; installed as a system dependency | LGPL-2.1-or-later and component notices |
 | [Whisper](https://github.com/openai/whisper) | Multilingual speech model | MIT |
 | [OpenCC Python](https://github.com/yichen0831/opencc-python) | Simplified/traditional conversion | Apache-2.0 |
 | [librime](https://github.com/rime/librime) | Future native engine option; not embedded | BSD-3-Clause |
@@ -204,3 +218,7 @@ number selection, script switching, syllable boundaries, empty/unknown input,
 Escape cancellation, and password-field bypass. Run
 `python3 native/fcitx5/smoke_runtime.py` to repeat them after installation.
 These checks use a dedicated input context and do not record your microphone.
+`python3 tests/native_speech_smoke.py /path/to/mandarin.wav` additionally tests
+native recording hotkeys, actual PipeWire capture, Whisper inference, and text
+commit using an isolated virtual audio source. It temporarily restarts the
+keyboard service and restores its audio-target setting afterward.

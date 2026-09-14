@@ -1,6 +1,6 @@
 """Build and install the Fcitx5 keyboard for the current Linux user.
 
-Requires system packages fcitx5, cmake, and a C++17 compiler. No root is needed
+Requires fcitx5, libime (with data), opencc, Boost headers, cmake, and a C++20 compiler. No root is needed
 for this script. Installs user configuration and enables a desktop-session
 service. The checkout and its .venv must remain at their current location.
 """
@@ -36,6 +36,7 @@ def main():
                     '-DCMAKE_BUILD_TYPE=Release', f'-DCMAKE_INSTALL_PREFIX={prefix}',
                     '-DCMAKE_INSTALL_LIBDIR=lib'], check=True)
     subprocess.run(['cmake', '--build', str(build), '-j2'], check=True)
+    subprocess.run(['ctest', '--test-dir', str(build), '--output-on-failure'], check=True)
     subprocess.run(['cmake', '--install', str(build)], check=True)
     config = home / '.config'
     profile = config / 'fcitx5/profile'

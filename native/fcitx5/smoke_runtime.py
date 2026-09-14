@@ -19,9 +19,11 @@ def call(path, iface, method, params=None):
     return bus.call_sync(service, path, iface, method, params, None,
                          Gio.DBusCallFlags.NONE, 5000, None).unpack()
 
+# An unmatched display keeps this synthetic context outside the desktop focus
+# group, so real application focus events cannot reset its composition.
 path, _ = call('/org/freedesktop/portal/inputmethod',
                'org.fcitx.Fcitx.InputMethod1', 'CreateInputContext',
-               GLib.Variant('(a(ss))', ([('program', 'shuangsheng-smoke')],)))
+               GLib.Variant('(a(ss))', ([('program', 'shuangsheng-smoke'), ('display', 'shuangsheng-test:')],)))
 commits = []
 preedits = []
 
@@ -56,7 +58,7 @@ try:
     call(path, interface, 'FocusIn')
     subprocess.run(['fcitx5-remote', '-s', 'shuangsheng'], check=True)
     type_text('nihao')
-    assert 'nihao' in preedits, preedits
+    assert any(text.replace(' ', '') == 'nihao' for text in preedits), preedits
     key(ord(' ')); drain()
     assert commits[-1] == '你好', commits
     type_text('xiexie')
@@ -70,6 +72,20 @@ try:
     type_text("xi'an")
     key(ord(' ')); drain()
     assert commits[-1] == '西安', commits
+    # These are decoded as sentences; they are not entries in our bundled TSV.
+    for pinyin, expected in [
+        ('wojintianxiangquchaoshimaidongxi', '我今天想去超市买东西'),
+        ('mingtianwomenyiqiquchifan', '明天我们一起去吃饭'),
+        ('rengongzhineng', '人工智能'),
+        ('zhonghuarenmingongheguo', '中华人民共和国'),
+    ]:
+        type_text(pinyin)
+        key(ord(' ')); drain()
+        assert commits[-1] == expected, (pinyin, commits)
+    type_text('nihaoo')
+    assert key(0xFF08), 'Backspace must update sentence decoding'
+    key(ord(' ')); drain()
+    assert commits[-1] == '你好', commits
     type_text('z')
     assert key(0xFF08), 'Backspace to empty must be consumed'
     assert not key(0xFF08), 'Backspace on empty must pass through'
@@ -85,7 +101,7 @@ try:
     call(path, interface, 'SetCapability', GLib.Variant('(t)', (2 | 16 | 8,)))
     assert not key(ord('n')), 'Password field must bypass pinyin'
     assert not key(ord(' '), 4 | 8), 'Password field must bypass dictation'
-    print('PASS: real Fcitx preedit, candidate/number selection, both scripts, raw commit, cancellation, password bypass')
+    print('PASS: real Fcitx preedit, candidate/number selection, both scripts, sentence decoding, editing, raw commit, cancellation, password bypass')
 finally:
     call(path, interface, 'FocusOut')
     call(path, interface, 'DestroyIC')

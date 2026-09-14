@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "paths.h"
+#include "pinyin.h"
 #include <fcitx/addonfactory.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
@@ -25,36 +26,23 @@
 
 namespace {
 using namespace fcitx;
-struct Entry { std::string simple, traditional, key, initials; std::vector<size_t> boundaries; double weight; };
-struct State : InputContextProperty { std::string buffer; };
+struct State : InputContextProperty {
+    explicit State(libime::PinyinIME *ime) : context(ime) {}
+    libime::PinyinContext context;
+};
 class Engine;
 class Word : public CandidateWord {
 public:
-    Word(std::string text, Engine *engine) : CandidateWord(Text(text)), value_(std::move(text)), engine_(engine) {}
+    Word(std::string text, size_t index, Engine *engine) : CandidateWord(Text(text)), index_(index), engine_(engine) {}
     void select(InputContext *ic) const override;
 private:
-    std::string value_;
+    size_t index_;
     Engine *engine_;
 };
 class Engine : public InputMethodEngine {
 public:
     explicit Engine(Instance *instance) : instance_(instance) {
         instance_->inputContextManager().registerProperty("shuangsheng", &factory_);
-        for (const char *file : {"starter.tsv", "rime.tsv"}) {
-            std::ifstream input(std::string(SHUANGSHENG_PROJECT_ROOT) + "/ime/data/" + file);
-            std::string line;
-            while (std::getline(input, line)) {
-                if (line.empty() || line[0] == '#') continue;
-                std::istringstream row(line); Entry e; std::string pinyin, weight;
-                if (!std::getline(row,e.simple,'\t') || !std::getline(row,e.traditional,'\t') ||
-                    !std::getline(row,pinyin,'\t') || !std::getline(row,weight)) continue;
-                try { e.weight=std::stod(weight); } catch (...) { continue; }
-                std::istringstream syllables(pinyin); std::string syllable;
-                while (syllables >> syllable) { if (!e.key.empty()) e.boundaries.push_back(e.key.size()); e.key += syllable; e.initials += syllable[0]; }
-                entries_.push_back(std::move(e));
-            }
-        }
-        std::stable_sort(entries_.begin(), entries_.end(), [](const Entry &a,const Entry &b){return a.weight>b.weight;});
         for (auto type : {EventType::InputContextFocusOut, EventType::InputContextDestroyed,
                           EventType::InputContextCapabilityChanged}) {
             handlers_.push_back(instance_->watchEvent(type, EventWatcherPhase::PreInputMethod,
@@ -72,6 +60,7 @@ public:
         cancelVoice();
         if (pid_ > 0) { kill(-pid_, SIGKILL); while (waitpid(pid_, nullptr, 0)<0 && errno==EINTR) {} }
         if (voiceFd_ >= 0) close(voiceFd_);
+        if (errorFd_ >= 0) close(errorFd_);
     }
     void reset(const InputMethodEntry &, InputContextEvent &event) override {
         if (voiceContext_ == event.inputContext()) cancelVoice();
@@ -81,11 +70,21 @@ public:
         // Candidate selection may destroy the CandidateWord; copy before clearing UI.
         auto value=text; clear(ic); if (ic->hasFocus() && !sensitive(ic)) ic->commitString(value);
     }
+    void select(InputContext *ic, size_t index) {
+        if (!ic->hasFocus() || sensitive(ic)) { clear(ic); return; }
+        auto &context=ic->propertyFor(&factory_)->context;
+        if (index>=context.candidates().size()) return;
+        context.select(index);
+        if (context.selected()) {
+            auto text=pinyin_.display(context.selectedSentence(), traditional_);
+            context.learn(); pinyin_.save(); commit(ic,text);
+        } else update(ic);
+    }
     void keyEvent(const InputMethodEntry &, KeyEvent &event) override {
         if (event.isRelease()) return;
         auto *ic=event.inputContext();
         if (sensitive(ic)) { if (voiceContext_==ic) cancelVoice(); clear(ic); return; }
-        auto key=event.key(); auto *state=ic->propertyFor(&factory_);
+        auto key=event.key(); auto &context=ic->propertyFor(&factory_)->context;
         if (key.check(Key("Control+Alt+space"))) {
             event.filterAndAccept();
             if (pid_ > 0) {
@@ -101,20 +100,31 @@ public:
             update(ic); status(ic,language_=="yue" ? "Cantonese 粤语" : "Mandarin 普通话"); return;
         }
         if (key.check(FcitxKey_Escape)) {
-            if (voiceContext_==ic || !state->buffer.empty()) { cancelVoice(); clear(ic); event.filterAndAccept(); }
+            if (voiceContext_==ic || !context.empty()) { cancelVoice(); clear(ic); event.filterAndAccept(); }
             return;
         }
         if (voiceContext_==ic) return;
         if (key.states() & (KeyStates(KeyState::Ctrl) | KeyState::Alt | KeyState::Super)) return;
         auto sym=key.sym();
-        if ((sym>=FcitxKey_a && sym<=FcitxKey_z) || (sym==FcitxKey_apostrophe && !state->buffer.empty())) {
-            if (state->buffer.size()<128) state->buffer += static_cast<char>(sym);
+        if ((sym>=FcitxKey_a && sym<=FcitxKey_z) || (sym==FcitxKey_apostrophe && !context.empty())) {
+            if (context.size()<128) context.type(std::string(1,static_cast<char>(sym)));
             update(ic); event.filterAndAccept(); return;
         }
-        if (state->buffer.empty()) return;
+        if (context.empty()) return;
+        if (sym==FcitxKey_Left || sym==FcitxKey_Right || sym==FcitxKey_Home || sym==FcitxKey_End) {
+            if (sym==FcitxKey_Left && context.cursor()>0) context.setCursor(context.cursor()-1);
+            if (sym==FcitxKey_Right && context.cursor()<context.size()) context.setCursor(context.cursor()+1);
+            if (sym==FcitxKey_Home) context.setCursor(context.selectedLength());
+            if (sym==FcitxKey_End) context.setCursor(context.size());
+            update(ic); event.filterAndAccept(); return;
+        }
+        if (sym==FcitxKey_Delete) {
+            if(context.cursor()<context.size()) context.erase(context.cursor(),context.cursor()+1);
+            update(ic); event.filterAndAccept(); return;
+        }
         auto list=ic->inputPanel().candidateList();
-        if (sym==FcitxKey_BackSpace) { state->buffer.pop_back(); update(ic); event.filterAndAccept(); return; }
-        if (sym==FcitxKey_Return || sym==FcitxKey_KP_Enter) { commit(ic,state->buffer); event.filterAndAccept(); return; }
+        if (sym==FcitxKey_BackSpace) { if(context.cursor()<=context.selectedLength()) context.cancel(); else context.backspace(); update(ic); event.filterAndAccept(); return; }
+        if (sym==FcitxKey_Return || sym==FcitxKey_KP_Enter) { commit(ic,context.userInput()); event.filterAndAccept(); return; }
         if (list && !list->empty()) {
             int index=-1;
             if (sym>=FcitxKey_1 && sym<=FcitxKey_9) index=static_cast<int>(sym-FcitxKey_1);
@@ -132,11 +142,19 @@ public:
                 ic->updateUserInterface(UserInterfaceComponent::InputPanel); event.filterAndAccept(); return;
             }
         }
-        if (sym==FcitxKey_space) { commit(ic,state->buffer); event.filterAndAccept(); return; }
+        if (sym==FcitxKey_space) { commit(ic,context.userInput()); event.filterAndAccept(); return; }
         // Commit composition before ordinary punctuation, then let the app handle it.
         if (sym>=FcitxKey_exclam && sym<=FcitxKey_asciitilde) {
-            if(list && !list->empty()) list->candidate(std::max(0,list->cursorIndex())).select(ic);
-            else commit(ic,state->buffer);
+            if(list && !list->empty()) {
+                // Complete any remaining segments before forwarding punctuation.
+                while (!context.empty() && !context.candidates().empty()) {
+                    context.select(0);
+                    if(context.selected()) {
+                        auto text=pinyin_.display(context.selectedSentence(),traditional_);
+                        context.learn(); pinyin_.save(); commit(ic,text); break;
+                    }
+                }
+            } else commit(ic,context.userInput());
         }
     }
 private:
@@ -144,7 +162,7 @@ private:
         return bool(ic->capabilityFlags() & (CapabilityFlags(CapabilityFlag::Password) | CapabilityFlag::Sensitive));
     }
     void clear(InputContext *ic) {
-        ic->propertyFor(&factory_)->buffer.clear(); ic->inputPanel().reset();
+        ic->propertyFor(&factory_)->context.clear(); ic->inputPanel().reset();
         ic->updatePreedit(); ic->updateUserInterface(UserInterfaceComponent::InputPanel);
     }
     void status(InputContext *ic, const std::string &text) {
@@ -152,49 +170,44 @@ private:
         ic->updateUserInterface(UserInterfaceComponent::InputPanel);
     }
     void update(InputContext *ic) {
-        const auto &buffer=ic->propertyFor(&factory_)->buffer;
-        ic->inputPanel().reset(); Text preedit(buffer); preedit.setCursor(buffer.size());
+        auto &context=ic->propertyFor(&factory_)->context;
+        auto [text,cursor]=context.preeditWithCursor();
+        // Convert selected Hanzi as well as candidates. Cursor is a UTF-8 byte offset.
+        auto before=pinyin_.display(text.substr(0,cursor),traditional_);
+        auto after=pinyin_.display(text.substr(cursor),traditional_);
+        ic->inputPanel().reset(); Text preedit(before+after); preedit.setCursor(before.size());
         ic->inputPanel().setClientPreedit(preedit); ic->inputPanel().setPreedit(preedit);
-        std::string query; std::vector<size_t> boundaries;
-        for (char c:buffer) { if(c!='\'') query+=c; else boundaries.push_back(query.size()); }
         auto list=std::make_unique<CommonCandidateList>(); list->setPageSize(9);
         list->setSelectionKey({Key(FcitxKey_1),Key(FcitxKey_2),Key(FcitxKey_3),Key(FcitxKey_4),Key(FcitxKey_5),Key(FcitxKey_6),Key(FcitxKey_7),Key(FcitxKey_8),Key(FcitxKey_9)});
-        std::unordered_set<std::string> seen;
-        if (!query.empty()) for (int pass=0;pass<3;pass++) {
-            for (const auto &entry:entries_) {
-                bool match=pass==0 ? entry.key==query : pass==1 ? entry.initials==query : entry.key.compare(0,query.size(),query)==0;
-                if (!boundaries.empty()) {
-                    if (pass==1) match=false;
-                    for (auto boundary:boundaries) if (std::find(entry.boundaries.begin(),entry.boundaries.end(),boundary)==entry.boundaries.end()) match=false;
-                }
-                const auto &text=traditional_ ? entry.traditional : entry.simple;
-                if(match && seen.insert(text).second) list->append(std::make_unique<Word>(text,this));
-                if(seen.size()>=90) break;
-            }
-            if(seen.size()>=90) break;
+        size_t index=0;
+        for (const auto &candidate:context.candidates()) {
+            list->append(std::make_unique<Word>(pinyin_.display(candidate.toString(),traditional_),index++,this));
         }
         if (!list->empty()) list->setGlobalCursorIndex(0);
         ic->inputPanel().setCandidateList(std::move(list));
-        if (!buffer.empty()) status(ic,language_=="yue" ? "粤语 · Ctrl+Alt+Space 录音" : "普通话 · Ctrl+Alt+Space 录音");
+        if (!context.empty()) status(ic,language_=="yue" ? "粤语 · Ctrl+Alt+Space 录音" : "普通话 · Ctrl+Alt+Space 录音");
         ic->updatePreedit(); ic->updateUserInterface(UserInterfaceComponent::InputPanel);
     }
     void startVoice(InputContext *ic) {
-        clear(ic); int fds[2];
+        clear(ic); int fds[2], errors[2];
         if(pipe2(fds,O_CLOEXEC)<0) { status(ic,"Cannot create dictation pipe"); return; }
+        if(pipe2(errors,O_CLOEXEC)<0) { close(fds[0]); close(fds[1]); status(ic,"Cannot create dictation error pipe"); return; }
         const std::string python=std::string(SHUANGSHENG_PROJECT_ROOT)+"/.venv/bin/python";
         pid_=fork();
         if(pid_==0) {
             setpgid(0,0); dup2(fds[1],STDOUT_FILENO); close(fds[0]); close(fds[1]);
+            dup2(errors[1],STDERR_FILENO); close(errors[0]); close(errors[1]);
             // Fcitx may block signals in its main thread. Reset the child's mask.
             sigset_t signals; sigemptyset(&signals); sigprocmask(SIG_SETMASK,&signals,nullptr);
             signal(SIGUSR1,SIG_IGN);
-            if(chdir(SHUANGSHENG_PROJECT_ROOT)<0) _exit(126);
-            execl(python.c_str(),python.c_str(),"-m","ime.native_voice","--language",language_.c_str(),"--script",traditional_ ? "traditional" : "simplified",static_cast<char *>(nullptr));
-            _exit(127);
+            if(chdir(SHUANGSHENG_PROJECT_ROOT)<0) { dprintf(STDERR_FILENO,"Project directory missing. Reinstall Shuangsheng.\n"); _exit(126); }
+            execl(python.c_str(),python.c_str(),"-m","ime.native_voice","--protocol","--language",language_.c_str(),"--script",traditional_ ? "traditional" : "simplified",static_cast<char *>(nullptr));
+            dprintf(STDERR_FILENO,"Cannot start speech Python. Install the project speech requirements.\n"); _exit(127);
         }
-        close(fds[1]);
-        if(pid_<0) { close(fds[0]); status(ic,"Cannot launch dictation"); return; }
+        close(fds[1]); close(errors[1]);
+        if(pid_<0) { close(fds[0]); close(errors[0]); status(ic,"Cannot launch dictation"); return; }
         setpgid(pid_,pid_); voiceFd_=fds[0]; fcntl(voiceFd_,F_SETFL,O_NONBLOCK);
+        errorFd_=errors[0]; fcntl(errorFd_,F_SETFL,O_NONBLOCK); voiceError_.clear();
         voiceContext_=ic; transcript_.clear(); stopping_=false; cancelledAt_=0; startedAt_=now(CLOCK_MONOTONIC); lastStopSignal_=0;
         status(ic,"Recording… Ctrl+Alt+Space stops · Esc cancels");
     }
@@ -205,42 +218,67 @@ private:
     void pollVoice() {
         if(pid_<=0) return;
         auto current=now(CLOCK_MONOTONIC);
+        if (!stopping_ && voiceContext_ && current-startedAt_>115000000) {
+            stopping_=true; status(voiceContext_,"Transcribing… Esc cancels");
+        }
         if (stopping_ && !cancelledAt_ && current-startedAt_>300000 && current-lastStopSignal_>500000) { kill(pid_,SIGUSR1); lastStopSignal_=current; }
         if(cancelledAt_ && now(CLOCK_MONOTONIC)-cancelledAt_>2000000) kill(-pid_,SIGKILL);
         char buffer[4096]; ssize_t n;
+        auto drainErrors=[this,&buffer,&n]() {
+            while ((n=read(errorFd_,buffer,sizeof(buffer)))>0) {
+                voiceError_.append(buffer,n);
+                if (voiceError_.size()>4096) voiceError_.erase(0,voiceError_.size()-4096);
+            }
+        };
+        drainErrors();
         while((n=read(voiceFd_,buffer,sizeof(buffer)))>0) {
             if(transcript_.size()+static_cast<size_t>(n)>65536) { cancelVoice(); break; }
             transcript_.append(buffer,n);
         }
         int result=0; auto done=waitpid(pid_,&result,WNOHANG);
         if(done==0 || (done<0 && errno==EINTR)) return;
+        // Fcitx's SIGCHLD zombie reaper can collect addon children before this
+        // timer. ECHILD is completion, not failure; require the worker's complete
+        // success frame instead of relying solely on a waitpid exit status.
+        bool reapedByHost = done<0 && errno==ECHILD;
         // The child can write between the first drain and waitpid. Drain once more
         // after exit so the final bytes are never lost.
         while((n=read(voiceFd_,buffer,sizeof(buffer)))>0) {
             if(transcript_.size()+static_cast<size_t>(n)>65536) { cancelVoice(); break; }
             transcript_.append(buffer,n);
         }
+        drainErrors(); close(errorFd_); errorFd_=-1;
         close(voiceFd_); voiceFd_=-1; pid_=-1;
         auto *ic=voiceContext_; voiceContext_=nullptr;
         if(!ic || !ic->hasFocus() || sensitive(ic)) { transcript_.clear(); return; }
         while(!transcript_.empty() && (transcript_.back()=='\n' || transcript_.back()=='\r')) transcript_.pop_back();
-        if(done>0 && WIFEXITED(result) && WEXITSTATUS(result)==0 && !transcript_.empty()) commit(ic,transcript_);
-        else status(ic,"Dictation failed or no speech; see Fcitx log");
+        const std::string prefix="SHUANGSHENG_OK\n", suffix="\nSHUANGSHENG_END";
+        bool framed=transcript_.size()>prefix.size()+suffix.size() && transcript_.compare(0,prefix.size(),prefix)==0 &&
+            transcript_.compare(transcript_.size()-suffix.size(),suffix.size(),suffix)==0;
+        if((reapedByHost || (done>0 && WIFEXITED(result) && WEXITSTATUS(result)==0)) && framed)
+            commit(ic,transcript_.substr(prefix.size(),transcript_.size()-prefix.size()-suffix.size()));
+        else {
+            while (!voiceError_.empty() && (voiceError_.back()=='\n' || voiceError_.back()=='\r')) voiceError_.pop_back();
+            auto line=voiceError_.substr(voiceError_.find_last_of('\n')==std::string::npos ? 0 : voiceError_.find_last_of('\n')+1);
+            std::string readable;
+            for (unsigned char c:line) if (c>=32 && c<127 && readable.size()<500) readable+=c;
+            status(ic,readable.empty() ? "Dictation failed or no speech. Check microphone and speech setup." : readable);
+        }
         transcript_.clear();
     }
     Instance *instance_;
-    FactoryFor<State> factory_{[](InputContext &){return new State;}};
-    std::vector<Entry> entries_;
+    shuangsheng::Pinyin pinyin_;
+    FactoryFor<State> factory_{[this](InputContext &){return new State(pinyin_.ime());}};
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> handlers_;
     std::unique_ptr<EventSourceTime> timer_;
     bool traditional_=false, stopping_=false;
-    std::string language_="zh", transcript_;
+    std::string language_="zh", transcript_, voiceError_;
     pid_t pid_=-1;
-    int voiceFd_=-1;
+    int voiceFd_=-1, errorFd_=-1;
     uint64_t cancelledAt_=0, startedAt_=0, lastStopSignal_=0;
     InputContext *voiceContext_=nullptr;
 };
-void Word::select(InputContext *ic) const { engine_->commit(ic,value_); }
+void Word::select(InputContext *ic) const { engine_->select(ic,index_); }
 class Factory : public AddonFactory {
     AddonInstance *create(AddonManager *manager) override { return new Engine(manager->instance()); }
 };
