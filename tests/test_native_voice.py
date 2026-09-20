@@ -109,3 +109,31 @@ class RecordingTests(unittest.TestCase):
             path.write_bytes(b'not a wave file')
             with self.assertRaisesRegex(RuntimeError, 'No valid microphone audio'):
                 validate_recording(path)
+
+
+class SnapshotTests(unittest.TestCase):
+    def test_unfinalized_header_and_partial_sample(self):
+        import io
+        import struct
+        import tempfile
+        import wave
+        from pathlib import Path
+        from ime.native_voice import recording_snapshot
+        output = io.BytesIO()
+        with wave.open(output, 'wb') as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(b'\x01\x02' * 16000)
+        data = bytearray(output.getvalue())
+        struct.pack_into('<I', data, 4, 0)
+        struct.pack_into('<I', data, 40, 0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'recording.wav'
+            self.assertIsNone(recording_snapshot(path))
+            path.write_bytes(data + b'\x01')
+            with wave.open(io.BytesIO(recording_snapshot(path)), 'rb') as wav:
+                self.assertEqual(wav.getnframes(), 16000)
+                self.assertEqual(wav.readframes(16000), b'\x01\x02' * 16000)
+            path.write_bytes(data[:30])
+            self.assertIsNone(recording_snapshot(path))

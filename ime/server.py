@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from . import __version__
 from .pinyin import PinyinEngine
 from .speech import SpeechError, SpeechService
 
@@ -51,7 +52,7 @@ class Server(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Shuangsheng/0.1"
+    server_version = f"Shuangsheng/{__version__}"
 
     def setup(self):
         super().setup()
@@ -108,6 +109,7 @@ class Handler(BaseHTTPRequestHandler):
             files = {"/": ("index.html", "text/html; charset=utf-8"),
                      "/index.html": ("index.html", "text/html; charset=utf-8"),
                      "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                     "/capture.js": ("capture.js", "text/javascript; charset=utf-8"),
                      "/styles.css": ("styles.css", "text/css; charset=utf-8")}
             if url.path not in files:
                 self.error(404, "Not found.")
@@ -148,10 +150,10 @@ class Handler(BaseHTTPRequestHandler):
             self.error(500, "Transcription failed. Check the server configuration and try again.")
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     with Server(("127.0.0.1", args.port)) as server:
         print(f"Shuangsheng is ready at http://localhost:{args.port}", flush=True)
         try:

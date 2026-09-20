@@ -8,6 +8,9 @@ from pathlib import Path
 import shutil
 import sys
 import threading
+import wave
+import io
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ime.server import Server
@@ -21,6 +24,11 @@ class Speech:
     def transcribe(self, audio, language, script):
         assert language == "yue", language
         assert script == "traditional", script
+        if audio[:4] == b"RIFF":
+            with wave.open(io.BytesIO(audio), 'rb') as wav:
+                assert wav.getnchannels() == 1 and wav.getsampwidth() == 2
+                assert wav.getnframes() > 0
+            time.sleep(0.5)
         return {"text": "廣東話", "language": "yue"}
 
 
@@ -31,7 +39,7 @@ def main():
     errors = []
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(executable_path=shutil.which("chromium"), headless=True)
+            browser = p.chromium.launch(executable_path=shutil.which("chromium"), headless=True, args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"])
             page = browser.new_page(viewport={"width": 1360, "height": 1000})
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.goto(f"http://127.0.0.1:{server.server_port}")
@@ -48,11 +56,32 @@ def main():
             page.locator("#pinyin").fill("hello")
             page.locator("#pinyin").press("Enter")
             assert page.locator("#document").input_value() == "中國hello你好"
+            page.locator('#pinyin').fill('nihao')
+            expect(page.locator('.candidate').first).to_contain_text('你好')
+            page.locator('#pinyin').press(',')
+            assert '你好，' in page.locator('#document').input_value()
+            page.locator('#pinyin').press('?')
+            assert '，？' in page.locator('#document').input_value()
             page.locator("#language").select_option("yue")
             page.locator("#audio-file").set_input_files({"name": "sample.wav", "mimeType": "audio/wav", "buffer": b"test audio"})
             expect(page.locator('#status')).to_contain_text('Transcription added')
             assert '廣東話' in page.locator('#document').input_value()
             assert "Transcription added" in page.locator("#status").inner_text()
+            before = page.locator('#document').input_value()
+            page.locator('#record').click()
+            expect(page.locator('#record-label')).to_have_text('Stop & finish')
+            expect(page.locator('#live-transcript')).to_have_text('廣東話', timeout=15000)
+            assert page.locator('#document').input_value() == before
+            page.locator('#record').click()
+            expect(page.locator('#record-label')).to_have_text('Start recording')
+            assert page.locator('#document').input_value().count('廣東話') == before.count('廣東話') + 1
+            # Stop while a preview is in flight; final output must still appear once.
+            before = page.locator('#document').input_value()
+            with page.expect_request('**/api/transcribe'):
+                page.locator('#record').click()
+            page.locator('#record').click()
+            expect(page.locator('#record-label')).to_have_text('Start recording', timeout=15000)
+            assert page.locator('#document').input_value().count('廣東話') == before.count('廣東話') + 1
             page.set_viewport_size({"width": 390, "height": 844})
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             page.locator("#pinyin").fill("nihao")

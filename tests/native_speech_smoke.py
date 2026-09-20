@@ -10,6 +10,9 @@ import os
 from pathlib import Path
 import subprocess
 import time
+import signal
+import tempfile
+import wave
 
 import gi
 gi.require_version('Gio', '2.0')
@@ -19,6 +22,10 @@ from gi.repository import Gio, GLib
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('sample', type=Path)
+    parser.add_argument('--repeat', type=int, default=1, choices=range(1, 11))
+    outcome = parser.add_mutually_exclusive_group()
+    outcome.add_argument('--fail-after-preview', action='store_true')
+    outcome.add_argument('--cancel-after-preview', action='store_true')
     args = parser.parse_args()
     if not args.sample.is_file():
         parser.error('Supply an existing Mandarin WAV sample.')
@@ -29,6 +36,7 @@ def main():
     bus = None
     player = None
     previous = None
+    fixture = tempfile.TemporaryDirectory(prefix="shuangsheng-fixture-")
     manager = subprocess.check_output(['systemctl', '--user', 'show-environment'], text=True)
     for line in manager.splitlines():
         if line.startswith('IME_RECORD_TARGET='):
@@ -57,11 +65,16 @@ def main():
                        GLib.Variant('(a(ss))', ([('program', 'shuangsheng-voice-test'), ('display', 'shuangsheng-test:')],)))
         commits = []
         updates = []
+        previews = []
 
         def received(_bus, _sender, _path, _iface, name, params, _data):
             if name == 'CommitString':
                 commits.append(params.unpack()[0])
             else:
+                if name == 'UpdateFormattedPreedit':
+                    text = ''.join(part[0] for part in params.unpack()[0])
+                    if any('\u4e00' <= char <= '\u9fff' for char in text):
+                        previews.append(text)
                 updates.append((name, str(params.unpack())[:600]))
                 del updates[:-12]
 
@@ -73,20 +86,60 @@ def main():
         assert key(ord('m'), 4 | 8), 'Mandarin shortcut was not consumed'
         assert key(ord(' '), 4 | 8), 'Start recording shortcut was not consumed'
         time.sleep(1)
-        player = subprocess.Popen(['pw-play', '--target', sink, str(args.sample.resolve())])
-        player.wait(timeout=30)
+        with wave.open(str(args.sample), 'rb') as source:
+            params = source.getparams()
+            frames = source.readframes(source.getnframes())
+        recording = Path(fixture.name) / 'long.wav'
+        with wave.open(str(recording), 'wb') as destination:
+            destination.setparams(params)
+            for _ in range(args.repeat):
+                destination.writeframes(frames)
+        player = subprocess.Popen(['pw-play', '--target', sink, str(recording)])
+        player.wait(timeout=115)
         assert player.returncode == 0, 'Virtual fixture playback failed'
-        time.sleep(0.2)
-        assert key(ord(' '), 4 | 8), 'Stop recording shortcut was not consumed'
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not previews:
+            while GLib.MainContext.default().pending():
+                GLib.MainContext.default().iteration(False)
+            time.sleep(.01)
+        assert previews, f'No live preview while recording: {updates}'
+        assert not commits, 'Preview must not commit provisional text'
+        if args.cancel_after_preview:
+            assert key(0xFF1B), 'Escape must cancel dictation'
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                while GLib.MainContext.default().pending():
+                    GLib.MainContext.default().iteration(False)
+                time.sleep(.01)
+            assert not commits, 'Explicit cancellation must discard the preview'
+            print('PASS: Escape discarded the preview without committing text')
+            return
+        if args.fail_after_preview:
+            host = subprocess.check_output(['systemctl', '--user', 'show',
+                                            'shuangsheng.service', '-p', 'MainPID', '--value'], text=True).strip()
+            children = subprocess.check_output(['pgrep', '-P', host], text=True).split()
+            workers = [int(pid) for pid in children if b'ime.native_voice' in
+                       Path(f'/proc/{pid}/cmdline').read_bytes()]
+            assert len(workers) == 1, workers
+            os.killpg(workers[0], signal.SIGKILL)
+        else:
+            assert key(ord(' '), 4 | 8), 'Stop recording shortcut was not consumed'
+        stopped_at = time.monotonic()
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline and not commits:
             while GLib.MainContext.default().pending():
                 GLib.MainContext.default().iteration(False)
             time.sleep(.01)
         assert commits and any('\u4e00' <= char <= '\u9fff' for char in commits[-1]), f'No Chinese transcript committed; last input updates: {updates}'
-        print('PASS: native hotkey → PipeWire capture → stop → Whisper → focused application commit')
+        print('PASS: native hotkey → PipeWire capture → live Whisper preedit → stop → focused application commit')
+        assert len(commits) == 1, f'Duplicate commits: {commits}'
+        if args.fail_after_preview:
+            assert commits[-1] in previews, (commits, previews)
+            print('PASS: worker crash preserved the recognized preview')
+        print(f'Stop to commit: {time.monotonic() - stopped_at:.2f}s; previews: {len(previews)}')
         print(commits[-1])
     finally:
+        fixture.cleanup()
         if path and bus:
             try:
                 call(path, interface, 'FocusOut')

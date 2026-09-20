@@ -95,6 +95,21 @@ try:
     type_text('rawtext')
     key(0xFF0D); drain()
     assert commits[-1] == 'rawtext', commits
+    for symbol, expected in [(',', '，'), ('.', '。'), ('?', '？'), ('!', '！'),
+                             ('"', '“'), ('"', '”')]:
+        assert key(ord(symbol)), 'Chinese punctuation must be consumed'
+        drain()
+        assert commits[-1] == expected, commits
+    type_text('nihao'); key(ord('1')); drain()
+    assert key(ord('.')), 'Candidate number must not trigger decimal mode'
+    drain()
+    assert commits[-1] == '。', commits
+    assert not key(ord('3'))
+    assert not key(ord('.')), 'Decimal period must pass through'
+    type_text('nihao')
+    assert key(ord(','))
+    drain()
+    assert commits[-2:] == ['你好', '，'], commits
     before = len(commits)
     type_text('nihao'); key(0xFF1B); drain()
     assert len(commits) == before

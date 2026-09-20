@@ -1,13 +1,29 @@
 name: Tests
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python: ['3.11', '3.12', '3.14']
+        include:
+          - os: ubuntu-22.04
+            python: '3.10'
+          - os: ubuntu-22.04
+            python: '3.12'
+          - os: ubuntu-24.04
+            python: '3.14'
+          - os: windows-2022
+            python: '3.12'
+          - os: macos-15
+            python: '3.12'
+          - os: macos-15-intel
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,13 +32,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python -m pip install -r requirements-rime.txt
       - run: python -m unittest discover -v
       - run: node --check static/app.js
+      - run: node --check static/capture.js
   native-build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev
-      - run: cmake -S native/fcitx5 -B build -DCMAKE_BUILD_TYPE=Release
-      - run: cmake --build build -j2
-      - run: ctest --test-dir build --output-on-failure
+      - name: Install Fcitx5 development dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev
+      - run: cmake -S native/fcitx5 -B .cache/native-ci -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build .cache/native-ci -j2
+      - run: ctest --test-dir .cache/native-ci --output-on-failure
+  rime-engine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y cmake g++ librime-dev libopencc-data
+      - run: python -m pip install -r requirements-rime.txt
+      - run: cmake -S native/rime -B .cache/rime-build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build .cache/rime-build --parallel
+      - run: python native/rime/smoke_runtime.py .cache/rime-build/shuangsheng_rime_smoke

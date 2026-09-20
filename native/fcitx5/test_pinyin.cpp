@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "pinyin.h"
+#include "punctuation.h"
 #include <stdexcept>
 #include <unistd.h>
 
@@ -7,6 +8,13 @@ void require(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(message);
 }
 int main() {
+    shuangsheng::Punctuation punctuation;
+    require(punctuation.convert(',')=="，", "Chinese comma missing");
+    require(punctuation.convert('"')=="“" && punctuation.convert('"')=="”", "Quote pairing failed");
+    require(punctuation.convert('3').empty() && punctuation.convert('.').empty(), "Decimal point converted");
+    punctuation.convert('a');
+    require(punctuation.convert('.')=="。", "Chinese full stop missing");
+    require(punctuation.convert('/').empty(), "Unmapped symbol changed");
     auto storage=std::filesystem::temp_directory_path()/ ("shuangsheng-pinyin-test-"+std::to_string(getpid()));
     try {
         {

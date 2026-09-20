@@ -1,23 +1,10 @@
 """Explicitly download speech weights before starting the offline service."""
-import argparse
-import os
 from pathlib import Path
+import sys
 
-os.environ.setdefault("HF_HOME", str(Path(__file__).resolve().parent.parent / ".cache" / "huggingface"))
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", default=os.getenv("IME_WHISPER_MODEL", "large-v3"))
-    args = parser.parse_args()
-    try:
-        from faster_whisper.utils import download_model
-    except ImportError:
-        parser.exit(1, "Install requirements.txt in a Python 3.11/3.12 virtual environment first.\n")
-    print(f"Downloading {args.model}. Model weights may require several GB.", flush=True)
-    path = download_model(args.model)
-    print(f"Model ready at {path}\nStart with: python -m ime.server")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ime.model_setup import main
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

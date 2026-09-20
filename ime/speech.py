@@ -1,18 +1,18 @@
 """Optional offline Mandarin/Cantonese transcription using faster-whisper."""
 import importlib.util
 import io
+import logging
 import os
 import threading
-from pathlib import Path
 
 from .conversion import ConversionError, convert_text
+from .paths import configure_model_cache
 
 MAX_AUDIO_BYTES = 20 * 1024 * 1024
 MAX_AUDIO_SECONDS = 120
 SAMPLE_RATE = 16000
 
-# Match download_model.py and keep large cached weights inside this workspace.
-os.environ.setdefault("HF_HOME", str(Path(__file__).resolve().parents[1] / ".cache" / "huggingface"))
+configure_model_cache()
 
 
 class SpeechError(Exception):
@@ -93,7 +93,7 @@ class SpeechService:
         except Exception as exc:
             raise SpeechError("Cannot decode this audio. Upload a valid WAV, MP3, M4A, Ogg, or WebM file.") from exc
 
-    def transcribe(self, audio: bytes, language: str = "auto", script: str = "simplified") -> dict:
+    def transcribe(self, audio: bytes, language: str = "auto", script: str = "simplified", *, fast: bool = False) -> dict:
         if language not in {"auto", "zh", "yue"}:
             raise SpeechError("language must be auto, zh (Mandarin), or yue (Cantonese)")
         if script not in {"simplified", "traditional", "original"}:
@@ -118,7 +118,8 @@ class SpeechService:
                 waveform,
                 language=None if language == "auto" else language,
                 task="transcribe",
-                beam_size=5,
+                beam_size=1 if fast else 5,
+                best_of=1 if fast else 5,
                 vad_filter=True,
                 condition_on_previous_text=False,
             )
@@ -129,6 +130,7 @@ class SpeechService:
         except SpeechError:
             raise
         except Exception as exc:
+            logging.exception("Local transcription inference failed")
             raise SpeechError("Local transcription failed. Check the model and available memory, then retry.", 500) from exc
         finally:
             self._lock.release()

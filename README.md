@@ -1,9 +1,56 @@
 # 双声 · Shuangsheng
 
-A local Chinese input method with pinyin typing and Mandarin/Cantonese dictation.
-Use the native **Fcitx5 keyboard on Linux** to type directly into applications,
-or the cross-platform browser input pad. Speech runs on your machine; no API
-keys or hosted speech service are used.
+A local Chinese input method with pinyin typing and Mandarin/Cantonese dictation
+for **Windows, macOS, and Linux**. Speech runs on your machine; no API keys or
+hosted speech service are used.
+
+| Platform | System-wide pinyin | Local voice and input pad |
+| --- | --- | --- |
+| Windows x64 | Shuangsheng Rime scheme with [Weasel / 小狼毫](https://rime.im/) | Packaged desktop application |
+| macOS Apple Silicon and Intel | Shuangsheng Rime scheme with [Squirrel / 鼠须管](https://rime.im/) | Packaged `.app` |
+| Linux x64 | Native Fcitx5 addon below, or Shuangsheng Rime scheme | Packaged desktop application |
+| All three, from source | OS adapters above | Python desktop application or localhost browser pad |
+
+Rime provides native composition, candidate windows, sentence input, and local
+learning on Windows and macOS. The desktop companion records and transcribes
+Mandarin/Cantonese, lets you review the result, and copies it for pasting into
+your application. The Linux Fcitx5 addon also offers integrated dictation with
+live preedit and direct insertion into the original text field.
+
+## Install Windows / macOS / Linux releases
+
+Download your platform archive from
+[GitHub Releases](https://github.com/harveyxiacn/ChineseInputMethod/releases).
+Extract the entire archive before starting Shuangsheng; keep its support files
+together. Release assets include SHA-256 checksums and third-party notices.
+Windows and macOS builds are currently unsigned; macOS builds are not notarized.
+See [release installation and verification](docs/releases.md).
+
+For system-wide pinyin on Windows or macOS, first install Weasel or Squirrel,
+then install the bundled Shuangsheng scheme and redeploy Rime as described in
+[the Rime setup guide](docs/rime.md). These existing native frontends handle the
+operating system integration; this project does not replace their installers.
+
+Open the desktop app for local voice. Pinyin works before downloading speech
+weights. Use the explicit model download action once, or select a local model
+directory; model files are not included in release archives. See
+[desktop controls, setup, and permissions](docs/desktop.md).
+
+From a source checkout (Python 3.12 recommended):
+
+```bash
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS / Linux:
+source .venv/bin/activate
+python -m pip install -r requirements-desktop.txt
+python scripts/install_rime.py
+python -m ime.desktop
+```
+
+The Rime installer preserves existing schemas and backs up modified settings.
+On Linux, the Fcitx5 addon below is the preferred integrated keyboard; the Rime
+installer is an alternative for users with an existing Rime frontend.
 
 ## System-wide Linux keyboard
 
@@ -49,15 +96,42 @@ Fcitx startup configuration. See [Fcitx's Wayland setup](https://fcitx-im.org/wi
 | Letters, Space or 1–9 | Compose pinyin and select a candidate |
 | Up/Down, PageUp/PageDown | Browse candidates and pages |
 | Enter / Escape | Insert literal pinyin / cancel composition |
-| Ctrl+Alt+Space | Start recording; press again to stop and transcribe |
+| Ctrl+Alt+Space | Start recording with live preview; press again to finish |
 | Ctrl+Alt+M / Ctrl+Alt+Y | Select Mandarin / Cantonese |
 | Ctrl+Alt+T | Toggle simplified / traditional output |
 | Escape while dictating | Cancel recording or transcription |
 
 Stay in the same text field while dictating. Changing focus cancels dictation;
 text is committed only into the original focused context. Recording ends after
-115 seconds at most. Password/sensitive fields bypass this engine. Language
+115 seconds at most. While recording, the native input field shows a revisable
+preedit and the browser shows a live transcript below the recording button.
+Stopping performs a final transcription and inserts the result once. Escape
+in the native input method discards the preview.
+
+Native live dictation checks for new audio every 3 seconds and processes
+windows of at most 12 seconds, preferring pauses after 5 seconds as boundaries.
+Confirmed windows are reused; stopping recognizes only the remaining tail.
+Live decoding uses a narrower beam for speed. Continuous speech without pauses
+may lose accuracy at window boundaries. Model loading and CPU inference still
+affect latency. If final inference or capture fails, the native addon inserts
+the latest displayed preview and warns that the ending may be incomplete;
+Escape and changing focus still cancel without inserting text. Error diagnostics
+are available in `journalctl --user -u shuangsheng.service`.
+
+The browser currently uses complete audio snapshots for its live preview, so
+long browser recordings may still slow down. Browser capture requires AudioWorklet
+on localhost or HTTPS. Uploaded files use one-shot transcription.
+Rebuild/reinstall the native addon after updating this checkout.
+
+Password/sensitive fields bypass this engine. Language
 and script selections currently last for the Fcitx process lifetime.
+Chinese mode converts common punctuation (`, . ? ! : ; ( ) [ ] < >`),
+backslash to `、`, paired quotes, `^` to `……`, and `_` to `——`.
+A period immediately after a typed digit stays ASCII for decimals. Apostrophes
+inside pinyin remain syllable separators. The browser applies this conversion
+in its pinyin input; the document editor remains free-form. Switch to English
+mode for URLs or code in native applications.
+
 The native adapter uses libime's full pinyin dictionary and statistical language
 model, including sentence composition and phrase-by-phrase selection. Type a
 full sentence such as `wojintianxiangquchaoshimaidongxi`, or select shorter
@@ -87,6 +161,40 @@ and `~/.config/environment.d/70-shuangsheng.conf`, along with
 service on demand), then log in again. Installer
 backups use the suffix `.before-shuangsheng`.
 
+## WeChat on niri / Wayland
+
+If WeChat's candidate window shakes or steals focus and only Latin letters reach
+the editor, try an app-specific Qt compatibility launch. Fcitx5 also serves the
+IBus protocol, so this still uses Shuangsheng without starting an ibus-daemon.
+The [Fcitx Qt compatibility guidance](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland/en#QT_IM_MODULE)
+describes this combination for applications shipping their own Qt runtime.
+
+For an official standalone executable or AppImage:
+
+```bash
+./scripts/wechat_compat.sh /absolute/path/to/WeChat.AppImage
+```
+
+Fully exit the previous WeChat instance first; a second launch may just activate
+its existing process, whose environment cannot be changed by the launcher.
+
+For the Portable-packaged `wechat` command, use the package's per-app environment
+file instead. Portable does not forward arbitrary launcher environment variables
+into its sandbox. For the standard `WeChat_Data` state directory, merge these
+settings into `~/.local/share/WeChat_Data/portable.env`, preserving other entries:
+
+```ini
+QT_QPA_PLATFORM=xcb
+QT_IM_MODULE=ibus
+IBUS_USE_PORTAL=1
+```
+
+Then fully exit WeChat and reopen it from the usual launcher. This keeps its
+Portable sandbox and data directory. Remove these entries to undo the override.
+Do not set this compatibility mode globally for all desktop applications.
+On the development installation (WeChat 4.1.13.9 / Portable 20.1), the filtered
+IBus portal was verified to compose `nihao` into `你好` using Shuangsheng.
+
 ## Run
 
 Pinyin works immediately with Python 3.10+ and the bundled dictionary:
@@ -114,8 +222,12 @@ python -m ime.server
 ```
 
 The dependencies and model need internet access during setup. The default
-Whisper **large-v3** download is approximately 3 GB and is stored under
-`.cache/huggingface` in this project. `HF_HOME` can override that location.
+Whisper **large-v3** download is approximately 3 GB. Source checkouts store it
+under `.cache/huggingface`; packaged apps use the user's writable cache directory
+(`%LOCALAPPDATA%/shuangsheng/huggingface` on Windows,
+`~/Library/Caches/shuangsheng/huggingface` on macOS, and
+`$XDG_CACHE_HOME/shuangsheng/huggingface` or `~/.cache/shuangsheng/huggingface`
+on Linux). `HF_HOME` can override that location.
 After setup, the server loads only cached weights and transcription works
 offline. The first recording loads the model and takes longer. CPU inference
 uses int8; allow several GB of available RAM. Long recordings can take longer
@@ -144,9 +256,11 @@ and busy inference return visible errors. There is no cloud fallback.
 
 ## Design and scope
 
-The Linux Fcitx5 addon provides system-wide input in compatible applications.
-The browser pad remains available on other operating systems. Native Windows
-TSF and macOS InputMethodKit adapters are not implemented.
+The Linux Fcitx5 addon and the Windows/macOS Rime frontends provide system-wide
+input in compatible applications. Rime uses its native pinyin engine, private
+user dictionary, and sentence composition. The desktop and browser pads use
+the project's smaller portable Python decoder. Windows TSF and macOS
+InputMethodKit integration is supplied by Weasel and Squirrel respectively.
 
 - `static/`: responsive, keyboard-accessible editor; no frontend build required.
 - `ime/pinyin.py`: indexed dictionary lookup, syllable normalization, prefix and
@@ -159,15 +273,21 @@ TSF and macOS InputMethodKit adapters are not implemented.
 - `ime/server.py`: standard-library HTTP service restricted to localhost and
   same-origin requests. No audio persistence or document storage.
 - `native/fcitx5/`: native C++ candidate UI and application text insertion.
+- `native/rime/`: portable native pinyin scheme, punctuation, and librime runtime test.
+- `ime/desktop.py`: desktop pinyin/voice interface and explicit copy workflow.
+- `ime/desktop_voice.py`: bounded, cancellable cross-platform microphone recording.
 - `ime/native_voice.py`: bounded PipeWire recording and local transcription;
   temporary recordings are deleted on completion or normal cancellation.
 - `scripts/install_native.py`: user installation and login-session startup.
+- `scripts/install_rime.py`: Windows/macOS/Linux Rime configuration installation.
+- `.github/workflows/release.yml`: tested platform archives and tag-triggered GitHub releases.
 
-Pinyin ranking uses basic dictionary weights and a small authored common-word
-overlay; it does not reproduce Rime's statistical ranking or learn your habits.
-Speech is transcribed after recording stops, not streamed. Whisper can make
+The portable pad's pinyin ranking uses basic dictionary weights and a small
+authored common-word overlay; it does not reproduce the native engines' ranking
+or learn your habits. The browser and Fcitx5 addon provide revisable live speech
+previews; the desktop companion transcribes after recording stops. Whisper can make
 mistakes, especially with accents, noise, code-switching, or short Cantonese
-clips; review results before using them. Text exists only in the current tab
+clips; review results before using them. The browser document exists only in the current tab
 and is lost on reload unless copied or downloaded.
 
 ## Open-source foundations
@@ -179,7 +299,7 @@ and is lost on reload unless copied or downloaded.
 | [libime](https://github.com/fcitx/libime) | Native pinyin dictionary, language model, and learning; installed as a system dependency | LGPL-2.1-or-later and component notices |
 | [Whisper](https://github.com/openai/whisper) | Multilingual speech model | MIT |
 | [OpenCC Python](https://github.com/yichen0831/opencc-python) | Simplified/traditional conversion | Apache-2.0 |
-| [librime](https://github.com/rime/librime) | Future native engine option; not embedded | BSD-3-Clause |
+| [Rime / librime](https://github.com/rime/librime) | Windows/macOS native input through separately installed Weasel/Squirrel, and optional Linux Rime frontend | BSD-3-Clause; frontend licenses apply separately |
 
 Dictionary provenance and regeneration instructions are in
 [ime/data/ATTRIBUTION.md](ime/data/ATTRIBUTION.md). The importer can regenerate
@@ -196,6 +316,7 @@ The bundled Rime dictionary retains its upstream LGPL terms. See
 ```bash
 python -m unittest discover -v
 node --check static/app.js
+node --check static/capture.js
 ```
 
 Unit and HTTP integration tests cover pinyin conversion/segmentation, binary
@@ -205,13 +326,19 @@ they do not establish real-world recognition accuracy. HTTP tests bind a
 temporary localhost port. The optional browser smoke test is described in
 `tests/browser_smoke.py` when Playwright and Chromium are installed.
 
-The initial implementation passed 29 tests and the Chromium smoke test. A real
+A real
 CPU large-v3 run transcribed the [public FunASR Mandarin sample](https://github.com/modelscope/FunASR/tree/main/examples)
 as “欢迎大家来体验达摩院推出的语音识别模型。” in approximately 5.5 seconds,
 including model loading on the development machine. The loaded model's `yue`
 support and Cantonese request routing were verified; Cantonese recognition
 accuracy has not yet been evaluated with a real Cantonese test corpus. Sample
 audio and downloaded model weights are excluded from the repository.
+
+CI tests Python on all three operating systems and builds release binaries on
+Windows x64, macOS arm64/x64, and Linux x64. Frozen-app smoke tests verify bundled
+data and runtime imports; the native Linux and Rime checks exercise actual
+decoder libraries. These checks do not replace microphone and application
+compatibility testing on each user's desktop. See [release checks](docs/releases.md).
 
 The native version also passed real Fcitx D-Bus preedit/commit tests for pinyin,
 number selection, script switching, syllable boundaries, empty/unknown input,
@@ -222,3 +349,9 @@ These checks use a dedicated input context and do not record your microphone.
 native recording hotkeys, actual PipeWire capture, Whisper inference, and text
 commit using an isolated virtual audio source. It temporarily restarts the
 keyboard service and restores its audio-target setting afterward.
+Use `--repeat 10` for a longer recording, `--fail-after-preview` to verify
+preview recovery after a worker crash, or `--cancel-after-preview` to verify
+that Escape still discards provisional text. The long-recording fixture
+(about 55 seconds) retained all ten repeated sentences; stopping took about
+7.4 seconds on the development CPU. This is a fixture result, not a latency
+or accuracy guarantee for arbitrary recordings.

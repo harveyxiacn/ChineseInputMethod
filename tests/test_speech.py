@@ -39,6 +39,13 @@ class SpeechTests(unittest.TestCase):
                 self.service.transcribe(b"audio", requested, "original")
                 self.assertEqual(self.model.transcribe.call_args.kwargs["language"], forwarded)
 
+    def test_fast_live_decode_does_not_change_default_upload_beam(self):
+        with patch.object(self.service, "_decode", return_value=[0.1]):
+            self.service.transcribe(b"audio", "yue", "original", fast=True)
+            self.assertEqual(self.model.transcribe.call_args.kwargs["beam_size"], 1)
+            self.service.transcribe(b"audio", "yue", "original")
+            self.assertEqual(self.model.transcribe.call_args.kwargs["beam_size"], 5)
+
     def test_unsupported_cantonese_is_actionable(self):
         self.model.supported_languages = ["zh"]
         message = self.assert_error(422, lambda: self.service.transcribe(b"audio", "yue", "original"))
@@ -63,8 +70,9 @@ class SpeechTests(unittest.TestCase):
             raise RuntimeError("out of memory")
             yield
         self.model.transcribe.return_value = (broken(), types.SimpleNamespace(language="zh"))
-        with patch.object(self.service, "_decode", return_value=[0.1]):
+        with patch.object(self.service, "_decode", return_value=[0.1]), self.assertLogs(level="ERROR") as logs:
             self.assert_error(500, lambda: self.service.transcribe(b"audio", script="original"))
+        self.assertIn("out of memory", "\n".join(logs.output))
         self.assertFalse(self.service._lock.locked())
 
     def test_missing_conversion_is_not_silent(self):

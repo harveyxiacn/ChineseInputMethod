@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "paths.h"
 #include "pinyin.h"
+#include "punctuation.h"
 #include <fcitx/addonfactory.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
@@ -29,6 +30,7 @@ using namespace fcitx;
 struct State : InputContextProperty {
     explicit State(libime::PinyinIME *ime) : context(ime) {}
     libime::PinyinContext context;
+    shuangsheng::Punctuation punctuation;
 };
 class Engine;
 class Word : public CandidateWord {
@@ -65,9 +67,11 @@ public:
     void reset(const InputMethodEntry &, InputContextEvent &event) override {
         if (voiceContext_ == event.inputContext()) cancelVoice();
         clear(event.inputContext());
+        event.inputContext()->propertyFor(&factory_)->punctuation = {};
     }
     void commit(InputContext *ic, const std::string &text) {
         // Candidate selection may destroy the CandidateWord; copy before clearing UI.
+        ic->propertyFor(&factory_)->punctuation.afterDigit=false;
         auto value=text; clear(ic); if (ic->hasFocus() && !sensitive(ic)) ic->commitString(value);
     }
     void select(InputContext *ic, size_t index) {
@@ -106,11 +110,18 @@ public:
         if (voiceContext_==ic) return;
         if (key.states() & (KeyStates(KeyState::Ctrl) | KeyState::Alt | KeyState::Super)) return;
         auto sym=key.sym();
+        auto &punctuation=ic->propertyFor(&factory_)->punctuation;
         if ((sym>=FcitxKey_a && sym<=FcitxKey_z) || (sym==FcitxKey_apostrophe && !context.empty())) {
+            punctuation.afterDigit=false;
             if (context.size()<128) context.type(std::string(1,static_cast<char>(sym)));
             update(ic); event.filterAndAccept(); return;
         }
-        if (context.empty()) return;
+        if (!context.empty()) punctuation.afterDigit=false;
+        auto symbol=punctuation.convert(sym);
+        if (context.empty()) {
+            if (!symbol.empty()) { commit(ic,symbol); event.filterAndAccept(); }
+            return;
+        }
         if (sym==FcitxKey_Left || sym==FcitxKey_Right || sym==FcitxKey_Home || sym==FcitxKey_End) {
             if (sym==FcitxKey_Left && context.cursor()>0) context.setCursor(context.cursor()-1);
             if (sym==FcitxKey_Right && context.cursor()<context.size()) context.setCursor(context.cursor()+1);
@@ -143,7 +154,7 @@ public:
             }
         }
         if (sym==FcitxKey_space) { commit(ic,context.userInput()); event.filterAndAccept(); return; }
-        // Commit composition before ordinary punctuation, then let the app handle it.
+        // Finish composition and emit Chinese punctuation in the same key event.
         if (sym>=FcitxKey_exclam && sym<=FcitxKey_asciitilde) {
             if(list && !list->empty()) {
                 // Complete any remaining segments before forwarding punctuation.
@@ -155,6 +166,7 @@ public:
                     }
                 }
             } else commit(ic,context.userInput());
+            if (!symbol.empty()) { commit(ic,symbol); event.filterAndAccept(); }
         }
     }
 private:
@@ -208,12 +220,31 @@ private:
         if(pid_<0) { close(fds[0]); close(errors[0]); status(ic,"Cannot launch dictation"); return; }
         setpgid(pid_,pid_); voiceFd_=fds[0]; fcntl(voiceFd_,F_SETFL,O_NONBLOCK);
         errorFd_=errors[0]; fcntl(errorFd_,F_SETFL,O_NONBLOCK); voiceError_.clear();
-        voiceContext_=ic; transcript_.clear(); stopping_=false; cancelledAt_=0; startedAt_=now(CLOCK_MONOTONIC); lastStopSignal_=0;
+        voiceContext_=ic; transcript_.clear(); lastPreview_.clear(); stopping_=false; cancelledAt_=0; startedAt_=now(CLOCK_MONOTONIC); lastStopSignal_=0;
         status(ic,"Recording… Ctrl+Alt+Space stops · Esc cancels");
     }
     void cancelVoice() {
         if(pid_>0 && !cancelledAt_) { kill(pid_,SIGTERM); cancelledAt_=now(CLOCK_MONOTONIC); }
-        voiceContext_=nullptr; transcript_.clear();
+        if(voiceContext_) clear(voiceContext_);
+        voiceContext_=nullptr; transcript_.clear(); lastPreview_.clear();
+    }
+    void consumePreviews() {
+        const std::string prefix="SHUANGSHENG_PARTIAL\n", suffix="\nSHUANGSHENG_END\n";
+        while (transcript_.compare(0,prefix.size(),prefix)==0) {
+            auto end=transcript_.find(suffix,prefix.size());
+            if(end==std::string::npos) return;
+            auto text=transcript_.substr(prefix.size(),end-prefix.size());
+            transcript_.erase(0,end+suffix.size());
+            auto *ic=voiceContext_;
+            if(ic && ic->hasFocus() && !sensitive(ic)) {
+                if (!text.empty()) lastPreview_=text;
+                Text preedit(text); preedit.setCursor(text.size());
+                ic->inputPanel().setClientPreedit(preedit);
+                ic->inputPanel().setPreedit(preedit);
+                ic->updatePreedit();
+                status(ic,stopping_ ? "Finishing… Esc cancels" : "Listening… Live preview · Esc cancels");
+            }
+        }
     }
     void pollVoice() {
         if(pid_<=0) return;
@@ -234,6 +265,7 @@ private:
         while((n=read(voiceFd_,buffer,sizeof(buffer)))>0) {
             if(transcript_.size()+static_cast<size_t>(n)>65536) { cancelVoice(); break; }
             transcript_.append(buffer,n);
+            consumePreviews();
         }
         int result=0; auto done=waitpid(pid_,&result,WNOHANG);
         if(done==0 || (done<0 && errno==EINTR)) return;
@@ -246,8 +278,11 @@ private:
         while((n=read(voiceFd_,buffer,sizeof(buffer)))>0) {
             if(transcript_.size()+static_cast<size_t>(n)>65536) { cancelVoice(); break; }
             transcript_.append(buffer,n);
+            consumePreviews();
         }
         drainErrors(); close(errorFd_); errorFd_=-1;
+        // Reap the capture process group too if the worker crashed mid-recording.
+        kill(-pid_,SIGKILL);
         close(voiceFd_); voiceFd_=-1; pid_=-1;
         auto *ic=voiceContext_; voiceContext_=nullptr;
         if(!ic || !ic->hasFocus() || sensitive(ic)) { transcript_.clear(); return; }
@@ -258,11 +293,18 @@ private:
         if((reapedByHost || (done>0 && WIFEXITED(result) && WEXITSTATUS(result)==0)) && framed)
             commit(ic,transcript_.substr(prefix.size(),transcript_.size()-prefix.size()-suffix.size()));
         else {
+            // A failed final decode must not destroy a preview the user has seen.
+            // Explicit cancellation / focus loss has already exited above.
+            if (!lastPreview_.empty()) commit(ic,lastPreview_);
+            else clear(ic);
+            fprintf(stderr,"Shuangsheng dictation failed (wait=%d, status=%d): %s\n",
+                    static_cast<int>(done),result,voiceError_.c_str());
             while (!voiceError_.empty() && (voiceError_.back()=='\n' || voiceError_.back()=='\r')) voiceError_.pop_back();
             auto line=voiceError_.substr(voiceError_.find_last_of('\n')==std::string::npos ? 0 : voiceError_.find_last_of('\n')+1);
             std::string readable;
             for (unsigned char c:line) if (c>=32 && c<127 && readable.size()<500) readable+=c;
-            status(ic,readable.empty() ? "Dictation failed or no speech. Check microphone and speech setup." : readable);
+            if (!lastPreview_.empty()) status(ic,"Saved recognized text; the ending may be incomplete. " + readable);
+            else status(ic,readable.empty() ? "Dictation failed or no speech. Check microphone and speech setup." : readable);
         }
         transcript_.clear();
     }
@@ -272,7 +314,7 @@ private:
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> handlers_;
     std::unique_ptr<EventSourceTime> timer_;
     bool traditional_=false, stopping_=false;
-    std::string language_="zh", transcript_, voiceError_;
+    std::string language_="zh", transcript_, voiceError_, lastPreview_;
     pid_t pid_=-1;
     int voiceFd_=-1, errorFd_=-1;
     uint64_t cancelledAt_=0, startedAt_=0, lastStopSignal_=0;

@@ -1,0 +1,150 @@
+# Shuangsheng's independent full-pinyin schema, powered by librime.
+# Copyright (c) Shuangsheng contributors. See the project LICENSE.
+schema:
+  schema_id: shuangsheng
+  name: 双声拼音
+  version: "1.0"
+  author:
+    - Shuangsheng contributors
+  description: |
+    Full pinyin with sentence composition and a private learning dictionary.
+    Simplified Chinese by default; Ctrl+Shift+4 toggles traditional Chinese.
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [中文, English]
+  - name: full_shape
+    states: [半角, 全角]
+  - name: simplification
+    reset: 1
+    states: [繁體, 简体]
+  - name: ascii_punct
+    states: [。，, ．，]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - script_translator
+  filters:
+    - simplifier
+    - uniquifier
+
+menu:
+  page_size: 9
+
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+  delimiter: " '"
+  algebra:
+    - abbrev/^([a-z]).+$/$1/
+    - abbrev/^(zh|ch|sh).+$/$1/
+    - derive/([nl])ue$/$1ve/
+    - derive/([jqxy])u/$1v/
+
+translator:
+  dictionary: shuangsheng
+  prism: shuangsheng
+  user_dict: shuangsheng
+  enable_user_dict: true
+  enable_sentence: true
+  enable_completion: true
+  preedit_format:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([jqxy])v/$1u/
+
+simplifier:
+  option_name: simplification
+  opencc_config: t2s.json
+  tips: none
+
+ascii_composer:
+  good_old_caps_lock: true
+  switch_key:
+    Shift_L: commit_code
+    Shift_R: commit_code
+    Control_L: noop
+    Control_R: noop
+    Caps_Lock: clear
+
+key_binder:
+  bindings:
+    - {when: always, accept: Control+Shift+4, toggle: simplification}
+    - {when: always, accept: Control+Shift+dollar, toggle: simplification}
+    - {when: has_menu, accept: minus, send: Page_Up}
+    - {when: has_menu, accept: equal, send: Page_Down}
+    - {when: paging, accept: comma, send: Page_Up}
+    - {when: has_menu, accept: period, send: Page_Down}
+
+recognizer:
+  patterns:
+    email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
+    uppercase: "[A-Z][-_+.'0-9A-Za-z]*$"
+    url: "^(www[.]|https?:|ftp:|mailto:).*$"
+
+punctuator:
+  full_shape:
+    " ": {commit: "　"}
+    ",": {commit: "，"}
+    ".": {commit: "。"}
+    "?": {commit: "？"}
+    "!": {commit: "！"}
+    ":": {commit: "："}
+    ";": {commit: "；"}
+    "'": {pair: ["‘", "’"]}
+    '"': {pair: ["“", "”"]}
+    "(": "（"
+    ")": "）"
+    "[": "【"
+    "]": "】"
+    "<": "《"
+    ">": "》"
+    "/": "／"
+    "\\": "、"
+    "-": "－"
+    "_": "——"
+    "+": "＋"
+    "=": "＝"
+    "@": "＠"
+    "#": "＃"
+    "$": "￥"
+    "%": "％"
+    "^": "……"
+    "&": "＆"
+    "*": "＊"
+    "`": "｀"
+    "~": "～"
+  half_shape:
+    ",": {commit: "，"}
+    ".": {commit: "。"}
+    "?": {commit: "？"}
+    "!": {commit: "！"}
+    ":": {commit: "："}
+    ";": {commit: "；"}
+    "'": {pair: ["‘", "’"]}
+    '"': {pair: ["“", "”"]}
+    "(": "（"
+    ")": "）"
+    "[": "【"
+    "]": "】"
+    "<": "《"
+    ">": "》"
+    "\\": "、"
+    "_": "——"
+    "^": "……"

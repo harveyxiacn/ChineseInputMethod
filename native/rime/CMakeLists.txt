@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.16)
+project(shuangsheng_rime_smoke LANGUAGES CXX)
+
+find_path(RIME_INCLUDE_DIR rime_api.h REQUIRED)
+find_library(RIME_LIBRARY NAMES rime librime REQUIRED)
+add_executable(shuangsheng_rime_smoke smoke_runtime.cpp)
+target_compile_features(shuangsheng_rime_smoke PRIVATE cxx_std_17)
+target_include_directories(shuangsheng_rime_smoke PRIVATE "${RIME_INCLUDE_DIR}")
+target_link_libraries(shuangsheng_rime_smoke PRIVATE "${RIME_LIBRARY}")
+if(MSVC)
+  target_compile_options(shuangsheng_rime_smoke PRIVATE /utf-8)
+  target_compile_definitions(shuangsheng_rime_smoke PRIVATE RIME_IMPORTS)
+endif()

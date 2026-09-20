@@ -8,7 +8,9 @@ let selected = 0;
 let candidateVersion = 0;
 let composing = false;
 let candidateTimer;
-let recorder = null;
+let audioContext = null;
+let capture = null;
+let liveSession = null;
 let microphone = null;
 let recordingTimer;
 let recordingStarted;
@@ -98,8 +100,21 @@ pinyin.addEventListener("compositionstart", () => { composing = true; ++candidat
 pinyin.addEventListener("compositionend", () => { composing = false; scheduleCandidates(); });
 pinyin.addEventListener("input", () => { if (!composing) scheduleCandidates(); });
 $("script").addEventListener("change", () => { scheduleCandidates(); status("Character style applies to new pinyin and voice input."); });
+let doubleQuoteOpen = true;
+let singleQuoteOpen = true;
+const chinesePunctuation = { ",": "，", ".": "。", "?": "？", "!": "！", ":": "：", ";": "；",
+  "(": "（", ")": "）", "[": "【", "]": "】", "<": "《", ">": "》", "\\": "、", "^": "……", "_": "——" };
 pinyin.addEventListener("keydown", (event) => {
   if (composing || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey) return;
+  let punctuation = chinesePunctuation[event.key];
+  if (event.key === '"') { punctuation = doubleQuoteOpen ? "“" : "”"; doubleQuoteOpen = !doubleQuoteOpen; }
+  if (event.key === "'" && !pinyin.value) { punctuation = singleQuoteOpen ? "‘" : "’"; singleQuoteOpen = !singleQuoteOpen; }
+  if (event.key === "." && /[0-9]$/.test(pinyin.value)) punctuation = null;
+  if (punctuation) {
+    event.preventDefault();
+    insertText((candidates[selected]?.text || pinyin.value) + punctuation);
+    resetPinyin(); return;
+  }
   if (event.key === "Escape") { event.preventDefault(); resetPinyin(); }
   else if (event.key === "Enter" && pinyin.value) {
     event.preventDefault(); insertText(pinyin.value); resetPinyin();
@@ -130,13 +145,17 @@ function setVoiceState(state) {
   $("audio-file").disabled = busy || !speechAvailable;
   $("record").disabled = state === "transcribing" || !speechAvailable;
   $("record").classList.toggle("recording", state === "recording");
-  $("record-label").textContent = { idle: "Start recording", requesting: "Cancel microphone request", recording: "Stop & transcribe", transcribing: "Transcribing…" }[state];
+  $("record-label").textContent = { idle: "Start recording", requesting: "Cancel microphone request", recording: "Stop & finish", transcribing: "Transcribing…" }[state];
   if (state !== "recording") $("record-time").textContent = "";
 }
 function releaseMicrophone() {
   clearInterval(recordingTimer);
   microphone?.getTracks().forEach((track) => track.stop());
   microphone = null;
+  capture?.disconnect();
+  capture = null;
+  if (audioContext) void audioContext.close();
+  audioContext = null;
 }
 async function transcribe(file, language, script) {
   if (file.size > 16 * 1024 * 1024) {
@@ -158,51 +177,101 @@ async function transcribe(file, language, script) {
   } catch (error) { status(error.message, true); }
   finally { setVoiceState("idle"); $("audio-file").value = ""; }
 }
+// WAV snapshots are independently decodable, including while capture continues.
+function recordingFile(session) {
+  const buffer = new ArrayBuffer(44 + session.samples * 2);
+  const view = new DataView(buffer);
+  const tag = (offset, text) => [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  tag(0, "RIFF"); view.setUint32(4, buffer.byteLength - 8, true); tag(8, "WAVE");
+  tag(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, session.rate, true);
+  view.setUint32(28, session.rate * 2, true); view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); tag(36, "data"); view.setUint32(40, session.samples * 2, true);
+  let offset = 44;
+  for (const chunk of session.chunks) for (const sample of chunk) {
+    view.setInt16(offset, Math.max(-1, Math.min(1, sample)) * 32767, true); offset += 2;
+  }
+  return new File([buffer], "recording.wav", { type: "audio/wav" });
+}
+async function updateLive(session, final = false) {
+  if (session.token !== voiceToken || session.busy) return;
+  session.busy = true;
+  try {
+    const form = new FormData();
+    form.append("file", recordingFile(session));
+    form.append("language", session.language); form.append("script", session.script);
+    const data = await readResponse(await fetch("/api/transcribe", { method: "POST", body: form, signal: session.controller.signal }));
+    if (session.token !== voiceToken) return;
+    $("live-transcript").textContent = data.text || "";
+    if (final) {
+      if (data.text?.trim()) { insertText(data.text); status("Transcription added to your text."); }
+      else status("No speech was recognized. Try a clearer recording.");
+    } else status("Listening. Live text may change as you continue speaking.");
+  } catch (error) {
+    if (session.token !== voiceToken) return;
+    status(final ? error.message : `Live preview unavailable: ${error.message} Will retry.`, true);
+  } finally {
+    session.busy = false;
+    if (session.token === voiceToken) {
+      if (final) { setVoiceState("idle"); liveSession = null; }
+      else if (session.stopped) void updateLive(session, true);
+    }
+  }
+}
+function finishRecording() {
+  const session = liveSession;
+  if (!session || session.stopped) return;
+  session.stopped = true;
+  releaseMicrophone();
+  setVoiceState("transcribing"); status("Finishing local transcription…");
+  if (!session.busy) void updateLive(session, true);
+}
 $("record").addEventListener("click", async () => {
-  if (voiceState === "requesting") { ++voiceToken; setVoiceState("idle"); status("Microphone request canceled."); return; }
-  if (voiceState === "recording") { setVoiceState("transcribing"); recorder.stop(); releaseMicrophone(); return; }
+  if (voiceState === "requesting") { ++voiceToken; releaseMicrophone(); setVoiceState("idle"); status("Microphone request canceled."); return; }
+  if (voiceState === "recording") { finishRecording(); return; }
   if (voiceState !== "idle") return;
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    status("Microphone recording needs a supported browser on localhost or HTTPS. You can also upload an audio file.", true); return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext || !window.AudioWorkletNode) {
+    status("Live recording needs a supported browser on localhost or HTTPS. You can also upload audio.", true); return;
   }
   const token = ++voiceToken;
-  const language = $("language").value;
-  const script = $("script").value;
   setVoiceState("requesting");
+  $("live-transcript").textContent = "";
   status("Allow microphone access in your browser to begin.");
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (token !== voiceToken) { stream.getTracks().forEach((track) => track.stop()); return; }
     microphone = stream;
-    const mimeType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-    const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    recorder = activeRecorder;
-    const chunks = [];
-    let failed = false;
-    activeRecorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
-    activeRecorder.addEventListener("error", () => { failed = true; releaseMicrophone(); setVoiceState("idle"); status("The browser could not finish recording. Please try again.", true); });
-    activeRecorder.addEventListener("stop", () => {
-      if (failed) return;
-      releaseMicrophone();
-      const type = activeRecorder.mimeType || "audio/webm";
-      const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-      const file = new File(chunks, `recording.${extension}`, { type });
-      if (!file.size) { setVoiceState("idle"); status("The recording was empty. Please try again.", true); return; }
-      transcribe(file, language, script);
-    }, { once: true });
-    recorder.start(1000);
+    const context = new AudioContext({ sampleRate: 16000 });
+    audioContext = context;
+    await context.audioWorklet.addModule("/capture.js");
+    if (token !== voiceToken) return;
+    await context.resume();
+    if (token !== voiceToken) return;
+    const session = { token, chunks: [], samples: 0, rate: context.sampleRate,
+      language: $("language").value, script: $("script").value, busy: false,
+      stopped: false, lastPreview: 0, controller: new AbortController() };
+    liveSession = session;
+    capture = new AudioWorkletNode(context, "capture");
+    capture.port.onmessage = ({ data }) => {
+      if (session.stopped || token !== voiceToken) return;
+      session.chunks.push(data); session.samples += data.length;
+      if (session.samples >= session.rate * 115) finishRecording();
+    };
+    context.createMediaStreamSource(stream).connect(capture);
+    // The processor outputs silence; connecting it keeps capture running.
+    capture.connect(context.destination);
+    stream.getAudioTracks().forEach(track => track.addEventListener("ended", finishRecording));
     recordingStarted = Date.now();
     setVoiceState("recording");
     recordingTimer = setInterval(() => {
       const seconds = Math.floor((Date.now() - recordingStarted) / 1000);
       $("record-time").textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-      if (seconds >= 115 && voiceState === "recording") {
-        setVoiceState("transcribing");
-        activeRecorder.stop();
-        releaseMicrophone();
+      if (seconds >= 115) { finishRecording(); return; }
+      if (!session.busy && seconds - session.lastPreview >= 3 && session.samples > 0) {
+        session.lastPreview = seconds; void updateLive(session);
       }
     }, 500);
-    status("Listening. Select Stop & transcribe when you’re finished. Recording stops automatically after 1:55.");
+    status("Listening. Live text appears below; Stop & finish inserts the final text. Maximum 1:55.");
   } catch (error) {
     if (token !== voiceToken) return;
     releaseMicrophone(); setVoiceState("idle");
@@ -226,7 +295,7 @@ $("download").addEventListener("click", () => {
   status("Text downloaded.");
 });
 $("clear").addEventListener("click", () => { editor.value = ""; selection = { start: 0, end: 0 }; updateCount(); status("Text cleared."); });
-window.addEventListener("pagehide", () => { ++voiceToken; releaseMicrophone(); });
+window.addEventListener("pagehide", () => { ++voiceToken; liveSession?.controller.abort(); releaseMicrophone(); });
 async function checkHealth() {
   setVoiceState("idle");
   try {

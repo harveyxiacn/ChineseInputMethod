@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(shuangsheng VERSION 0.2.0 LANGUAGES CXX)
+project(shuangsheng VERSION 0.3.0 LANGUAGES CXX)
 find_package(Fcitx5Core REQUIRED)
 find_package(LibIMEPinyin 1.1.5 REQUIRED)
 find_package(OpenCC REQUIRED)

@@ -1,9 +1,13 @@
 """One-shot local dictation worker for the Fcitx5 addon.
 
 SIGUSR1 stops recording and starts transcription. SIGTERM cancels everything.
-Only the final transcript is written to stdout; diagnostics go to stderr.
+Protocol mode emits live preview frames and a final transcript; diagnostics go to stderr.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import io
+import struct
+import time
 from array import array
 import os
 from pathlib import Path
@@ -16,6 +20,7 @@ import threading
 import wave
 
 from .speech import SpeechService
+from .live_speech import LiveTranscript
 
 
 class Cancelled(BaseException):
@@ -52,7 +57,39 @@ def validate_recording(path):
         raise RuntimeError("Microphone captured silence. Check that your input device is selected and unmuted.")
 
 
-def record(path, stop, seconds=115):
+def recording_snapshot(path):
+    """Rebuild a WAV from complete PCM samples; pw-record finalizes sizes on exit."""
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return None
+    offset = 12
+    fmt = None
+    while offset + 8 <= len(data):
+        kind = data[offset:offset + 4]
+        size = struct.unpack_from("<I", data, offset + 4)[0]
+        offset += 8
+        if kind == b"fmt " and size >= 16 and offset + size <= len(data):
+            fmt = struct.unpack_from("<HHIIHH", data, offset)
+        if kind == b"data":
+            if not fmt or fmt[:2] != (1, 1) or fmt[2] != 16000 or fmt[5] != 16:
+                return None
+            pcm = data[offset:offset + 115 * 16000 * 2]
+            pcm = pcm[:len(pcm) // 2 * 2]
+            if len(pcm) < 16000:
+                return None
+            output = io.BytesIO()
+            with wave.open(output, "wb") as wav:
+                wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(16000)
+                wav.writeframes(pcm)
+            return output.getvalue()
+        offset += size + size % 2
+    return None
+
+
+def record(path, stop, seconds=115, preview=None):
     executable = shutil.which("pw-record")
     if not executable:
         raise RuntimeError("Install PipeWire's pw-record to use microphone dictation.")
@@ -65,9 +102,12 @@ def record(path, stop, seconds=115):
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=errors)
         try:
-            import time
             deadline = time.monotonic() + seconds + 2
+            next_preview = time.monotonic() + 3
             while process.poll() is None and not stop.wait(0.1):
+                if preview and time.monotonic() >= next_preview:
+                    preview(path)
+                    next_preview = time.monotonic() + 3
                 if time.monotonic() >= deadline:
                     break
         finally:
@@ -102,10 +142,38 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="shuangsheng-voice-") as directory:
             path = Path(directory) / "recording.wav"
-            record(path, stop)
-            if stop.is_set():
-                stop.clear()
-            result = SpeechService().transcribe(path.read_bytes(), args.language, args.script)
+            service = SpeechService()
+            pending = None
+
+            def emit(text):
+                text = " ".join(text.splitlines()).strip()
+                if text and args.protocol:
+                    print("SHUANGSHENG_PARTIAL\n" + text + "\nSHUANGSHENG_END", flush=True)
+
+            live = LiveTranscript(service, args.language, args.script, emit)
+
+            def recognize_preview(audio):
+                try:
+                    live.update(audio)
+                except Exception as exc:
+                    print(f"Live preview failed: {exc}", file=sys.stderr, flush=True)
+
+            def preview(path):
+                nonlocal pending
+                if pending is not None and not pending.done():
+                    return
+                audio = recording_snapshot(path)
+                if audio:
+                    pending = executor.submit(recognize_preview, audio)
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                record(path, stop, preview=preview if args.protocol else None)
+                if pending is not None:
+                    pending.result()
+                if args.protocol:
+                    result = {"text": live.update(path.read_bytes(), final=True)}
+                else:
+                    result = service.transcribe(path.read_bytes(), args.language, args.script)
             if result["text"].strip():
                 text = result["text"].strip()
                 if args.protocol:

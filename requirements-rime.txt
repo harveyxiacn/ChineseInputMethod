@@ -1,0 +1,2 @@
+# Only needed to install the native Rime schema from source.
+PyYAML>=6.0.2,<7
