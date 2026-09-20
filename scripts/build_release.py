@@ -19,6 +19,8 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+if __package__ in (None, ""):
+    sys.path.insert(0, str(ROOT))
 TARGETS = ("linux-x64", "windows-x64", "macos-arm64", "macos-x64")
 SOURCE_DIRS = ("ime", "static", "native", "scripts", "packaging", "docs", "tests", ".github")
 SOURCE_FILES = ("README.md", "LICENSE", "CONTRIBUTING.md", "requirements.txt",
@@ -70,6 +72,8 @@ def write_checksums(directory, version):
 
 def write_metadata(directory, version, target):
     """Record resolved versions and retain wheel-provided license/notice texts."""
+    from scripts.runtime_provenance import collect_runtime_provenance
+
     directory.mkdir(parents=True)
     distributions = sorted(importlib.metadata.distributions(), key=lambda item: item.metadata['Name'].lower())
     installed = {}
@@ -102,9 +106,13 @@ def write_metadata(directory, version, target):
         metadata = distribution.read_text("METADATA") or distribution.read_text("PKG-INFO")
         (destination / "METADATA.txt").write_text(metadata or f"Name: {name}\nVersion: {distribution.version}\n", encoding="utf-8")
     result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True)
+    worktree = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, text=True, capture_output=True)
     manifest = {"version": version, "target": target, "python": sys.version,
                 "commit": result.stdout.strip() if result.returncode == 0 else "unknown",
+                "source_worktree_dirty": bool(worktree.stdout.strip()) if worktree.returncode == 0 else None,
                 "dependencies": installed, "model_weights_included": False,
+                "native_runtimes": collect_runtime_provenance(),
+                "dependency_sources": "third-party-sources/source-manifest.json",
                 "signing": "ad-hoc macOS signature; no Developer ID / Windows publisher certificate"}
     (directory / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
@@ -166,6 +174,8 @@ def unpack_archive(archive, directory, target):
 
 
 def build(version, target, *, gui_smoke=False):
+    from scripts.runtime_provenance import collect_native_sources
+
     if host_target() != target:
         raise ValueError(f"Must build {target} on a matching host; detected {host_target()}")
     build_root = ROOT / ".cache" / "release" / target
@@ -195,6 +205,8 @@ def build(version, target, *, gui_smoke=False):
     for name in ("README.md", "LICENSE"):
         shutil.copy2(ROOT / name, package / name)
     shutil.copy2(ROOT / "packaging" / "QUICKSTART.md", package / "QUICKSTART.md")
+    shutil.copy2(ROOT / "packaging" / "THIRD_PARTY.md", package / "THIRD_PARTY.md")
+    collect_native_sources(package / "third-party-sources")
     destination = ROOT / "dist" / "release"
     destination.mkdir(parents=True, exist_ok=True)
     archive = destination / archive_name(version, target)

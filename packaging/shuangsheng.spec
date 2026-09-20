@@ -48,5 +48,5 @@ if sys.platform == 'darwin':
                  info_plist={
                      'NSMicrophoneUsageDescription': '双声 uses your microphone for local Chinese dictation. Audio stays on this Mac.',
                      'NSHighResolutionCapable': True,
-                     'LSMinimumSystemVersion': '13.0',
+                     'LSMinimumSystemVersion': '14.0',
                  })

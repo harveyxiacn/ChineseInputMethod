@@ -39,6 +39,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-tk libportaudio2 libasound2 xvfb
       - name: Install build and runtime dependencies
         run: python -m pip install -r requirements-desktop.txt -r requirements-rime.txt -r packaging/requirements-build.txt
+      - name: Cache verified native dependency sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/third-party-sources
+          key: native-sources-${{ runner.os }}-${{ hashFiles('packaging/pyav-sources.json', 'requirements-desktop.txt') }}
       - name: Build, relocate and smoke-test application
         env:
           RELEASE_REF: ${{ github.ref_name }}

@@ -6,8 +6,8 @@ The release builds these native applications with Python 3.12 and PyInstaller:
 | Archive target | Build runner | Intended environment |
 | --- | --- | --- |
 | `windows-x64.zip` | `windows-2022` | Windows 10/11 x64 |
-| `macos-arm64.zip` | `macos-15` | Apple Silicon, macOS 13+ |
-| `macos-x64.zip` | `macos-15-intel` | Intel, macOS 13+ |
+| `macos-arm64.zip` | `macos-15` | Apple Silicon, macOS 14+ |
+| `macos-x64.zip` | `macos-15-intel` | Intel, macOS 14+ |
 | `linux-x64.tar.gz` | `ubuntu-22.04` | glibc Linux with a desktop, Ubuntu 22.04+ |
 
 Runner labels follow [GitHub's supported runner list](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
@@ -24,7 +24,12 @@ which is a [CTranslate2 requirement](https://opennmt.net/CTranslate2/installatio
 Each archive contains a desktop application, a quick-start guide, a source
 snapshot including the Linux Fcitx5 adapter and Rime installer/configuration,
 bundled dictionary source and licenses, resolved build dependency versions and
-available dependency license/notice files. The source tree is deliberately
+available dependency license/notice files. `third-party-sources/` contains the
+exact pinned PyAV FFmpeg recipe, its native dependency source archives/patches,
+PyAV and pynput sources, with verified download hashes. The build records
+FFmpeg's reported license/configuration, shared-library hashes, Python,
+Tcl/Tk and PortAudio runtime versions; see `THIRD_PARTY.md` for component terms.
+The source tree is deliberately
 copied from a small allowlist; user caches, microphone recordings and model
 weights are excluded. The commit SHA is recorded in `build-manifest.json`.
 
@@ -56,8 +61,11 @@ in `.cache/release/`, assembles the source and notices, then extracts the
 archive into an unrelated temporary directory and executes its smoke test.
 Errors stop the build. `--target` optionally asserts that the host is the
 expected architecture. PyInstaller and wheel versions are recorded; only the
-build tool is pinned, so rebuilding after dependency updates can change the
-binaries. Retain the manifest when investigating regressions.
+build tool and PyAV wheel are pinned, so other dependency updates can change
+the binaries. PyAV/FFmpeg version changes require reviewing the source manifest
+before the build can proceed. Build-time source downloads require internet;
+their verified cache is `.cache/third-party-sources/`. Retain the manifest when
+investigating regressions.
 
 Use the Actions **Cross-platform release → Run workflow** button for validation
 without publishing. It uploads all four build artifacts for 14 days. Running

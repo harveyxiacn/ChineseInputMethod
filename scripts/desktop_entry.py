@@ -8,6 +8,9 @@ import os
 from pathlib import Path
 import sys
 
+if not getattr(sys, "frozen", False) and __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 def verify_runtime() -> dict:
     """Exercise bundled binary libraries and VAD without a model or microphone."""
@@ -19,6 +22,9 @@ def verify_runtime() -> dict:
                "av", "onnxruntime", "opencc", "yaml")
     for module in modules:
         importlib.import_module(module)
+    import ctranslate2
+    compute_types = sorted(ctranslate2.get_supported_compute_types("cpu"))
+    assert "int8" in compute_types, "The CPU inference backend does not support the configured int8 mode"
     if sys.platform == "darwin":
         import HIServices
         import Quartz
@@ -42,7 +48,8 @@ def verify_runtime() -> dict:
     assert (root / "static" / "index.html").is_file(), "Browser assets missing"
     assert (root / "native" / "rime" / "shuangsheng.schema.yaml").is_file(), "Rime schema missing"
     assert (root / "ime" / "data" / "luna_pinyin.dict.yaml").is_file(), "Rime dictionary missing"
-    return {"libraries": list(modules), "audio_samples": len(waveform), "vad": "passed"}
+    return {"libraries": list(modules), "audio_samples": len(waveform), "vad": "passed",
+            "cpu_compute_types": compute_types}
 
 
 def main(argv=None):

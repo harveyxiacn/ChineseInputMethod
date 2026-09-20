@@ -10,7 +10,7 @@ installed separately; no cloud speech service is used.
 | macOS Apple Silicon / Intel | Move `Shuangsheng.app` to Applications, then open it |
 | Linux x64 | `./Shuangsheng/Shuangsheng` |
 
-macOS builds target macOS 13 or later; CI runs on macOS 15. Linux builds target
+macOS builds target macOS 14 or later; CI runs on macOS 15. Linux builds target
 Ubuntu 22.04 or newer compatible glibc systems and require a desktop session.
 Windows builds target Windows 10/11 x64. ARM Windows and musl/Alpine Linux are
 not packaged. macOS Intel and Apple Silicon have separate downloads.
@@ -67,6 +67,8 @@ host. `--install-rime --dry-run` previews configuration changes. A Windows
 console window stays open for CLI diagnostics while the desktop app runs.
 `--smoke-test` checks bundled assets/libraries without a microphone or download.
 
-Application source, dictionary source/terms, and dependency license notices are
-included in `source/` and `release-metadata/`. See `source/docs/releases.md` for
+Application source, dictionary source/terms, dependency license notices and
+the exact PyAV/FFmpeg native source inputs are included in `source/`,
+`release-metadata/` and `third-party-sources/`. Read `THIRD_PARTY.md` for
+component terms; native codecs have their own LGPL/GPL licenses. See `source/docs/releases.md` for
 build instructions and verification limits.

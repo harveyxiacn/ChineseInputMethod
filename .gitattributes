@@ -1,0 +1,2 @@
+# Preserve upstream legal text, including its original whitespace.
+packaging/licenses/* -whitespace

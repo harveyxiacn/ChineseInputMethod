@@ -5,7 +5,10 @@ pad and local Mandarin/Cantonese dictation.
 Download the archive matching your system and extract it completely. Python,
 speech libraries, pinyin dictionaries, source code and license notices are
 included. Whisper model weights and Weasel/Squirrel are installed separately.
-Read `QUICKSTART.md` in the archive before starting.
+Read `QUICKSTART.md` and `THIRD_PARTY.md` in the archive before starting.
+The application source retains MIT terms; bundled third-party libraries and
+codecs retain their own licenses. Matching PyAV/FFmpeg build inputs and pynput
+source are included under `third-party-sources/`, with exact hashes and recipes.
 
 - Windows x64, macOS Apple Silicon, macOS Intel, Linux x64.
 - Builds are unsigned by a verified publisher; macOS uses an ad-hoc signature

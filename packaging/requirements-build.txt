@@ -1,2 +1,4 @@
 # Build with Python 3.12. Runtime dependencies are in requirements-desktop.txt.
 pyinstaller==6.16.0
+# Keep wheel-native dependency source provenance tied to a reviewed build.
+av==18.1.0
