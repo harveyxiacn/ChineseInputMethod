@@ -140,6 +140,10 @@ def smoke_test(package, target, working_directory, *, gui=False):
     # runner's real input method profile.
     subprocess.run([str(executable), "--install-rime", "--user-dir", str(working_directory / "rime"), "--dry-run"],
                    cwd=working_directory, env=environment, check=True, timeout=30)
+    if target.startswith("linux-"):
+        for command in ("--native-voice", "--speech-daemon"):
+            subprocess.run([str(executable), command, "--help"], cwd=working_directory,
+                           env=environment, check=True, timeout=30)
     if gui:
         subprocess.run([str(executable), "--gui-smoke-test"], cwd=working_directory,
                        env=environment, check=True, timeout=30)

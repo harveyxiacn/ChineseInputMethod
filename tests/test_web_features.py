@@ -90,11 +90,13 @@ class LiveSessionTests(unittest.TestCase):
 
     def test_completed_sessions_free_slots_and_keep_bounded_retry_cache(self):
         sessions = LiveSessions(self.speech, limit=1)
-        for _ in range(10):
-            token = sessions.start('en', 'original')['id']
-            final = sessions.feed(token, 0, self.pcm, True)
-            self.assertEqual(sessions.feed(token, 0, self.pcm, True), final)
-            self.assertLessEqual(len(sessions.sessions), 1)
+        # Windows can return equal monotonic values for several fast operations.
+        with patch('ime.web_sessions.time.monotonic', return_value=100):
+            for _ in range(10):
+                token = sessions.start('en', 'original')['id']
+                final = sessions.feed(token, 0, self.pcm, True)
+                self.assertEqual(sessions.feed(token, 0, self.pcm, True), final)
+                self.assertEqual(list(sessions.sessions), [token])
 
     def test_default_active_cap_is_four(self):
         for _ in range(3):
@@ -113,7 +115,8 @@ class LiveSessionTests(unittest.TestCase):
         self.speech.transcribe.assert_not_called()
 
     def test_expiry_boundary_is_consistent_and_releases_idle_session(self):
-        used = self.sessions.sessions[self.token]['used']
+        # Subtracting these float timestamps loses precision at the deadline.
+        used = self.sessions.sessions[self.token]['used'] = 1000.1
         with patch('ime.web_sessions.time.monotonic', return_value=used + self.sessions.ttl):
             with self.assertRaises(SpeechError) as caught:
                 self.sessions.feed(self.token, 0, self.pcm)

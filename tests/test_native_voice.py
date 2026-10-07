@@ -29,6 +29,7 @@ class NativeVoiceTests(unittest.TestCase):
         stop_recorder(process)
         process.send_signal.assert_not_called()
 
+    @unittest.skipUnless(hasattr(signal, 'SIGUSR1'), 'Native capture uses POSIX stop signals')
     def test_native_launch_uses_reusable_client_and_keeps_output_framing(self):
         import io
         from unittest.mock import patch
@@ -49,6 +50,7 @@ class NativeVoiceTests(unittest.TestCase):
         self.assertEqual(output.getvalue(), 'SHUANGSHENG_PARTIAL\nJohn did not pay 42\nSHUANGSHENG_END\nSHUANGSHENG_OK\nJohn did not pay 42\nSHUANGSHENG_END\n')
         self.assertEqual(service.transcribe.call_args.args[1:], ('en', 'original'))
 
+    @unittest.skipUnless(hasattr(signal, 'SIGUSR1'), 'Native capture uses POSIX stop signals')
     def test_native_cancel_during_inference_delivers_no_transcript(self):
         import io
         from unittest.mock import patch

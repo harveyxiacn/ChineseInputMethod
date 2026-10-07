@@ -106,7 +106,9 @@ class RimeSchemeTests(unittest.TestCase):
         generated = build_rime_schemes.schema_bytes()
         self.assertEqual(set(generated), {'shuangsheng_shuangpin.schema.yaml', 'shuangsheng_jyutping.schema.yaml'})
         for filename, content in generated.items():
-            self.assertEqual(content, (install_rime.ROOT / 'native/rime' / filename).read_bytes())
+            # Git's Windows checkout can use CRLF; generator output is canonical LF.
+            bundled = (install_rime.ROOT / 'native/rime' / filename).read_text(encoding='utf-8').encode('utf-8')
+            self.assertEqual(content, bundled)
 
     def test_jyutping_schema_retains_tones_and_toneless_forms(self):
         schema = yaml.safe_load((install_rime.ROOT / 'native/rime/shuangsheng_jyutping.schema.yaml').read_text(encoding='utf-8'))

@@ -195,6 +195,22 @@ class UpdaterTests(unittest.TestCase):
         with self.assertRaises(UpdateError):self.updater.activate(record)
         self.assertIsNone(self.updater.state()['current'])
 
+    def test_late_install_cannot_downgrade_already_activated_release(self):
+        first=self.prepare();second=self.prepare('v0.4.1')
+        self.updater.activate(second)
+        with self.assertRaisesRegex(UpdateError,'newer update'):
+            self.updater.activate(first)
+        self.assertEqual(self.updater.state()['current'],second)
+
+    def test_bootstrap_rejects_older_release_but_accepts_same_published_version(self):
+        offer,_=self.offer('v0.4.0')
+        with patch.object(module,'application_version',return_value='0.4.0'), \
+             patch.object(module.Updater,'check',return_value=offer), patch('sys.stdout',io.StringIO()):
+            self.assertEqual(module.main(['check','--bootstrap']),0)
+        with patch.object(module,'application_version',return_value='0.4.1'), \
+             patch.object(module.Updater,'check',return_value=offer), patch('sys.stderr',io.StringIO()):
+            self.assertEqual(module.main(['install','--bootstrap']),1)
+
     def test_subprocess_environment_does_not_inherit_frozen_library_paths(self):
         with patch.dict(os.environ,{'LD_LIBRARY_PATH':'/old/app','TCL_LIBRARY':'/old/tcl','PYTHONPATH':'/old/code'},clear=True):
             environment=module.subprocess_environment()

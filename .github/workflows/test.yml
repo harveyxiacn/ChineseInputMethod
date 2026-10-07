@@ -57,7 +57,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install Fcitx5 development dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev libjson-c-dev fcitx5-bin fcitx5-modules python3-gi dbus-daemon
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev libjson-c-dev fcitx5 fcitx5-modules python3-gi dbus-daemon
       - run: cmake -S native/fcitx5 -B .cache/native-ci -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build .cache/native-ci -j2
       - run: ctest --test-dir .cache/native-ci --output-on-failure

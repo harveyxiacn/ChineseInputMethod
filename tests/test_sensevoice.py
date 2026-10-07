@@ -35,7 +35,7 @@ class SenseVoiceTests(unittest.TestCase):
             self.assertTrue(options['disable_update'])
             self.assertNotIn('vad_model', options)
             self.assertNotIn('remote_code', options)
-            self.assertEqual(options['init_param'], str(Path(directory, 'model.pt')))
+            self.assertEqual(options['init_param'], str(Path(directory, 'model.pt').resolve()))
             segments, info = adapter.transcribe([.1], language='en')
             self.assertEqual(next(segments).text, 'John did not pay 42.5')
             self.assertEqual(info.language, 'en')

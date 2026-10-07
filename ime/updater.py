@@ -254,6 +254,14 @@ class Updater:
         self.current_version = current_version or application_version()
         self.target = target or host_target()
 
+    def _prepare_root(self):
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        info = self.root.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            raise UpdateError("The update root must be a real directory.")
+        if os.name == "posix" and (info.st_uid != os.getuid() or info.st_mode & 0o022):
+            raise UpdateError("The update directory must be owned by this user and not writable by others.")
+
     def status(self):
         detail = "从 GitHub 检查正式版；下载校验后安装到独立目录，保留旧版。"
         if self.native_installed():
@@ -346,7 +354,7 @@ class Updater:
     def download(self, offer, progress=None):
         try:
             self._validate_offer(offer)
-            self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self._prepare_root()
             with file_lock(self.root / "update"):
                 sums = self._bytes(offer["checksum_url"], 1024 * 1024).decode("utf-8")
                 matches = [line.split() for line in sums.splitlines() if len(line.split()) == 2 and line.split()[1].lstrip("*") == offer["name"]]
@@ -405,6 +413,8 @@ class Updater:
         self._record(record)
         with file_lock(self.root / "update"):
             old = self.state()
+            if old.get("current") and version_tuple(record["version"]) < version_tuple(old["current"]["version"]):
+                raise UpdateError("A newer update was already activated; use explicit rollback to downgrade.")
             if old.get("current") == record:
                 return old
             _atomic_json(self.root / "active.json", {"current": record, "previous": old.get("current")})
@@ -418,6 +428,11 @@ class Updater:
             _atomic_json(self.root / "active.json", state)
 
     def rollback(self):
+        self._prepare_root()
+        with file_lock(self.root / "installation"):
+            return self._rollback()
+
+    def _rollback(self):
         state = self.state()
         previous = state.get("previous")
         if not previous:
@@ -472,6 +487,11 @@ class Updater:
             ready.unlink(missing_ok=True)
 
     def install(self, record):
+        self._prepare_root()
+        with file_lock(self.root / "installation"):
+            return self._install(record)
+
+    def _install(self, record):
         self._record(record)
         native_transaction = None
         if self.native_installed():

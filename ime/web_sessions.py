@@ -20,6 +20,7 @@ class LiveSessions:
         self.limit = limit
         self.sessions = {}
         self.lock = threading.Lock()
+        self._completed = 0
 
     @staticmethod
     def _token(token):
@@ -28,9 +29,9 @@ class LiveSessions:
 
     def _prune(self, now):
         self.sessions = {key: item for key, item in self.sessions.items()
-                         if now - item["used"] < self.ttl or item["lock"].locked()}
+                         if now < item["used"] + self.ttl or item["lock"].locked()}
         finished = sorted((key for key, item in self.sessions.items() if item["finished"]),
-                          key=lambda key: self.sessions[key]["used"], reverse=True)
+                          key=lambda key: (self.sessions[key]["used"], self.sessions[key]["completed"]), reverse=True)
         for key in finished[self.limit:]:
             if not self.sessions[key]["lock"].locked():
                 self.sessions.pop(key)
@@ -48,7 +49,7 @@ class LiveSessions:
             token = secrets.token_urlsafe(24)
             self.sessions[token] = {"live": LiveTranscript(self.speech, language, script, lambda _: None,
                 hotwords=hotwords, initial_prompt=initial_prompt), "pcm": bytearray(), "sequence": 0, "used": now,
-                "lock": threading.Lock(), "last": None, "fingerprint": None, "finished": False, "cancelled": False}
+                "lock": threading.Lock(), "last": None, "fingerprint": None, "finished": False, "completed": 0, "cancelled": False}
             return {"id": token, "sample_rate": RATE, "max_seconds": 115}
 
     def cancel(self, token):
@@ -73,7 +74,7 @@ class LiveSessions:
             session = self.sessions.get(token)
             if not session:
                 raise SpeechError("Recording session expired. Start another recording.", 410)
-            if time.monotonic() - session["used"] >= self.ttl and not session["lock"].locked():
+            if time.monotonic() >= session["used"] + self.ttl and not session["lock"].locked():
                 self.sessions.pop(token)
                 raise SpeechError("Recording session expired. Start another recording.", 410)
             if not session["lock"].acquire(blocking=False):
@@ -119,9 +120,13 @@ class LiveSessions:
                 session["fingerprint"] = fingerprint
                 session["finished"] = final
                 if final:
+                    self._completed += 1
+                    session["completed"] = self._completed
                     session["pcm"].clear()
                 self._prune(time.monotonic())
                 return dict(result)
         finally:
-            session["used"] = time.monotonic()
-            session["lock"].release()
+            with self.lock:
+                session["used"] = time.monotonic()
+                session["lock"].release()
+                self._prune(session["used"])
