@@ -14,6 +14,7 @@ import platform
 import posixpath
 import re
 import shutil
+import ssl
 import stat
 import subprocess
 import sys
@@ -112,10 +113,33 @@ class _Redirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, fp, code, message, headers, newurl)
 
 
+def _tls_context():
+    """Use the destination OS trust store, even when frozen on another distro."""
+    context = ssl.create_default_context()
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+        # An explicit trust-store override must not silently gain other roots.
+        return context
+    if sys.platform == "linux":
+        # Bundled OpenSSL keeps its build host's default path (e.g. /usr/lib/ssl),
+        # which need not exist on the installed machine (e.g. Arch /etc/ssl).
+        for name in ("/etc/ssl/certs/ca-certificates.crt",
+                     "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem"):
+            if Path(name).is_file():
+                context.load_verify_locations(cafile=name)
+                break
+    if not context.get_ca_certs():
+        # macOS/Python distributions can also lack an OpenSSL default CA file.
+        # PyInstaller's certifi hook bundles this public root certificate set.
+        import certifi
+        context.load_verify_locations(cafile=certifi.where())
+    return context
+
+
 def open_url(url):
     validate_url(url)
     request = urllib.request.Request(url, headers={"User-Agent": "Shuangsheng-Updater/0.4", "Accept": "application/json" if url == API_URL else "application/octet-stream"})
-    return urllib.request.build_opener(_Redirects()).open(request, timeout=45)
+    https = urllib.request.HTTPSHandler(context=_tls_context())
+    return urllib.request.build_opener(_Redirects(), https).open(request, timeout=45)
 
 
 def _bounded_json(path):
@@ -537,11 +561,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Check or install a verified stable Shuangsheng release.")
     parser.add_argument("action", choices=["check", "download", "install", "rollback", "status"])
     parser.add_argument("--bootstrap", action="store_true", help="First managed install from source; permit the same published version, never an older one")
+    parser.add_argument("--report", type=Path, help="Write a successful check as JSON, including in windowed builds")
     args = parser.parse_args(argv)
     if args.bootstrap and args.action not in {"check", "download", "install"}:
         parser.error("--bootstrap applies only to check, download or install")
+    if args.report and args.action != "check":
+        parser.error("--report applies only to check")
     updater = Updater(current_version="0.0.0" if args.bootstrap else None)
     try:
+        if args.report:
+            args.report.unlink(missing_ok=True)
         if args.action == "status":
             print(json.dumps({"version": updater.current_version, "target": updater.target, **updater.state()}, ensure_ascii=False))
         elif args.action == "rollback":
@@ -552,6 +581,8 @@ def main(argv=None):
             if args.bootstrap and offer and version_tuple(offer["version"]) < version_tuple(application_version()):
                 raise UpdateError("The latest published release is older than this updater; wait for its release before bootstrapping.")
             print(json.dumps(offer or {"current": updater.current_version, "available": False}, ensure_ascii=False))
+            if args.report:
+                _atomic_json(args.report, {"url": API_URL, "current": updater.current_version, "update": offer})
             if offer and args.action != "check":
                 record = updater.download(offer)
                 if args.action == "install":

@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import stat
+import ssl
+import types
 import tarfile
 import tempfile
 import unittest
@@ -129,6 +131,69 @@ class UpdaterTests(unittest.TestCase):
                     'https://github.com@evil/x','https://github.com:444/x','https://127.0.0.1/x']:
             with self.assertRaises(UpdateError):module.validate_url(url)
         module.validate_url('https://release-assets.githubusercontent.com/file?signature=value')
+
+    def test_frozen_linux_uses_installed_os_roots_with_verification_enabled(self):
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self.assertEqual(context.get_ca_certs(), [])
+        with patch.dict(os.environ, {}, clear=True), patch.object(module.sys, 'platform', 'linux'), \
+             patch.object(module.ssl, 'create_default_context', return_value=context), \
+             patch.object(module.Path, 'is_file', side_effect=lambda: True), \
+             patch.object(context, 'load_verify_locations') as load, \
+             patch.object(context, 'get_ca_certs', return_value=[{'subject': 'system root'}]):
+            self.assertIs(module._tls_context(), context)
+        load.assert_called_once_with(cafile='/etc/ssl/certs/ca-certificates.crt')
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    def test_explicit_tls_trust_override_does_not_add_other_roots(self):
+        for name in ('SSL_CERT_FILE', 'SSL_CERT_DIR'):
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            with patch.dict(os.environ, {name: '/custom/roots'}, clear=True), \
+                 patch.object(module.ssl, 'create_default_context', return_value=context), \
+                 patch.object(context, 'load_verify_locations') as load:
+                self.assertIs(module._tls_context(), context)
+                load.assert_not_called()
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(context.check_hostname)
+
+    def test_empty_default_trust_store_uses_bundled_public_roots(self):
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        certifi = types.SimpleNamespace(where=lambda: '/bundled/certifi/cacert.pem')
+        with patch.dict(os.environ, {}, clear=True), patch.object(module.sys, 'platform', 'darwin'), \
+             patch.object(module.ssl, 'create_default_context', return_value=context), \
+             patch.dict('sys.modules', {'certifi': certifi}), \
+             patch.object(context, 'load_verify_locations') as load:
+            module._tls_context()
+        load.assert_called_once_with(cafile='/bundled/certifi/cacert.pem')
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    def test_existing_platform_store_does_not_need_certifi_fallback(self):
+        context = Mock()
+        context.get_ca_certs.return_value = [{'subject': 'OS root'}]
+        with patch.dict(os.environ, {}, clear=True), patch.object(module.sys, 'platform', 'win32'), \
+             patch.object(module.ssl, 'create_default_context', return_value=context):
+            module._tls_context()
+        context.load_verify_locations.assert_not_called()
+
+    def test_https_handler_receives_verified_context(self):
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        with patch.object(module, '_tls_context', return_value=context), \
+             patch.object(module.urllib.request, 'build_opener') as build:
+            module.open_url(module.API_URL)
+        redirects, https = build.call_args.args
+        self.assertIsInstance(redirects, module._Redirects)
+        self.assertIs(https._context, context)
+        self.assertEqual(build.return_value.open.call_args.kwargs['timeout'], 45)
+
+    def test_check_report_written_only_after_successful_check(self):
+        report = self.root / 'check.json'
+        with patch.object(module.Updater, 'check', return_value=None), patch('sys.stdout', io.StringIO()):
+            self.assertEqual(module.main(['check', '--report', str(report)]), 0)
+        self.assertEqual(json.loads(report.read_text()), {'url':module.API_URL, 'current':module.application_version(), 'update':None})
+        with patch.object(module.Updater, 'check', side_effect=UpdateError('TLS failed')), patch('sys.stderr', io.StringIO()):
+            self.assertEqual(module.main(['check', '--report', str(report)]), 1)
+        self.assertFalse(report.exists(), 'A failed check must not retain a stale success report')
 
     def test_latest_release_needs_unique_assets_and_stable_public_state(self):
         offer, data = self.offer()

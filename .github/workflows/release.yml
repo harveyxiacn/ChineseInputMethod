@@ -41,6 +41,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-tk libportaudio2 libasound2 xvfb xauth
       - name: Install build and runtime dependencies
         run: python -m pip install -r requirements-desktop.txt -r requirements-rime.txt -r packaging/requirements-build.txt
+      - name: Test frozen HTTPS gate failure handling
+        run: python -m unittest tests.ota_release_smoke -v
       - name: Cache verified native dependency sources
         uses: actions/cache@v4
         with:
@@ -62,12 +64,12 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             xvfb-run -a python scripts/build_release.py --version "$version" --target '${{ matrix.target }}' --gui-smoke-test
             if [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              xvfb-run -a python tests/ota_release_smoke.py "dist/release/Shuangsheng-$version-${{ matrix.target }}.tar.gz" '${{ matrix.target }}'
+              xvfb-run -a python tests/ota_release_smoke.py "dist/release/Shuangsheng-$version-${{ matrix.target }}.tar.gz" '${{ matrix.target }}' --https-check
             fi
           else
             python scripts/build_release.py --version "$version" --target '${{ matrix.target }}' --gui-smoke-test
             if [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              python tests/ota_release_smoke.py "dist/release/Shuangsheng-$version-${{ matrix.target }}.zip" '${{ matrix.target }}'
+              python tests/ota_release_smoke.py "dist/release/Shuangsheng-$version-${{ matrix.target }}.zip" '${{ matrix.target }}' --https-check
             fi
           fi
       - uses: actions/upload-artifact@v4

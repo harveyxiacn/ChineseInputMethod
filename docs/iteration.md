@@ -131,6 +131,9 @@ permissions, app widgets and packaged releases still need target-OS acceptance.
   in 3.54 seconds and preserved the test sentence's numbers. AI output still
   requires explicit acceptance.
 
-Verification did not replace the running input method, record a microphone,
-or exercise actual Windows/macOS application insertion. SenseVoice model quality
-and all target-platform release archives remain outside this Linux verification.
+These feature checks preceded release and did not replace the running input
+method, record a microphone, or exercise actual Windows/macOS application
+insertion. The subsequent [v0.4.0 release acceptance](updates.md#v040-release-acceptance--2026-10-07)
+passed all four packaged OTA workflows and upgraded the installed Linux input
+method through the public GitHub release. SenseVoice model quality and interactive
+Windows/macOS application insertion remain outside this verification.
