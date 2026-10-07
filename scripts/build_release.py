@@ -22,9 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if __package__ in (None, ""):
     sys.path.insert(0, str(ROOT))
 TARGETS = ("linux-x64", "windows-x64", "macos-arm64", "macos-x64")
-SOURCE_DIRS = ("ime", "static", "native", "scripts", "packaging", "docs", "tests", ".github")
+SOURCE_DIRS = ("ime", "static", "native", "scripts", "packaging", "docs", "tests", "benchmarks", ".github")
 SOURCE_FILES = ("README.md", "LICENSE", "CONTRIBUTING.md", "requirements.txt",
-                "requirements-desktop.txt", "requirements-rime.txt")
+                "requirements-desktop.txt", "requirements-rime.txt", "requirements-sensevoice.txt")
 
 
 def validate_version(value):

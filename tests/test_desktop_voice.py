@@ -228,6 +228,75 @@ class DictationTests(unittest.TestCase):
             self.assertIn("录音按钮", shortcut.start())
         self.assertIsNone(shortcut.listener)
 
+    def test_live_preview_level_and_final_preserve_names_and_numbers(self):
+        from ime.live_speech import wav_bytes, RATE
+        preview_audio = wav_bytes(b'\x01\x20' * RATE * 4)
+        final_audio = wav_bytes(b'\x01\x20' * RATE * 5)
+
+        def recorder(stop, cancel, device, *, on_started, on_preview, on_level):
+            on_started()
+            on_level(.25)
+            on_preview(preview_audio)
+            return final_audio
+
+        service = MagicMock()
+        service.transcribe.side_effect = [{'text': 'John'}, {'text': 'John did not pay 42'}]
+        job = DictationJob(service, recorder)
+        job.start('en', 'original', hotwords=['John'])
+        job._thread.join(2)
+        events = event_list(job)
+        self.assertIn(('level', .25), events)
+        self.assertIn(('partial', 'John'), events)
+        self.assertIn(('result', 'John did not pay 42'), events)
+        self.assertEqual(service.transcribe.call_count, 2)
+        self.assertEqual(service.transcribe.call_args.kwargs, {'fast': True, 'hotwords': ['John']})
+
+    def test_cancel_live_inference_emits_no_late_partial_or_result(self):
+        from ime.live_speech import wav_bytes, RATE
+        entered, release = threading.Event(), threading.Event()
+        audio = wav_bytes(b'\x01\x20' * RATE * 4)
+
+        def recorder(stop, cancel, device, *, on_started, on_preview, on_level):
+            on_started()
+            on_preview(audio)
+            entered.wait(2)
+            return audio
+
+        def transcribe(*args, **kwargs):
+            entered.set()
+            release.wait(2)
+            return {'text': 'late result'}
+
+        job = DictationJob(types.SimpleNamespace(transcribe=transcribe), recorder)
+        job.start()
+        self.assertTrue(entered.wait(2))
+        job.cancel()
+        release.set()
+        job._thread.join(2)
+        kinds = [kind for kind, _ in event_list(job)]
+        self.assertNotIn('result', kinds)
+        self.assertNotIn('partial', kinds)
+        self.assertIn('cancelled', kinds)
+
+    def test_hold_shortcut_starts_once_and_stops_on_chord_release(self):
+        start, stop = MagicMock(), MagicMock()
+        listener = MagicMock()
+        listener.canonical.side_effect = lambda key: key
+        keyboard = types.SimpleNamespace(Listener=MagicMock(return_value=listener),
+                                         HotKey=types.SimpleNamespace(parse=lambda _: ['ctrl', 'alt', 'd']))
+        shortcut = GlobalShortcut(start, hotkey='<ctrl>+<alt>+d', mode='hold', on_release=stop)
+        with patch('sys.platform', 'win32'), patch.dict(sys.modules, {'pynput': types.SimpleNamespace(keyboard=keyboard)}):
+            shortcut.start()
+        handlers = keyboard.Listener.call_args.kwargs
+        for key in ['ctrl', 'alt', 'd', 'd']:
+            handlers['on_press'](key)
+        start.assert_called_once()
+        handlers['on_release']('unrelated')
+        stop.assert_not_called()
+        handlers['on_release']('d')
+        handlers['on_release']('alt')
+        stop.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

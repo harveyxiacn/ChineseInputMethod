@@ -28,7 +28,7 @@ backend = '_win32' if sys.platform == 'win32' else '_darwin' if sys.platform == 
 hiddenimports += ['pynput.keyboard.' + backend, 'pynput.mouse.' + backend,
                   'pynput.keyboard._dummy', 'pynput.mouse._dummy']
 if sys.platform == 'darwin':
-    hiddenimports += ['HIServices', 'Quartz']
+    hiddenimports += ['HIServices', 'Quartz', 'AppKit']
 for distribution in ('faster-whisper', 'huggingface-hub', 'tokenizers', 'ctranslate2',
                      'onnxruntime', 'av', 'sounddevice', 'pynput', 'opencc-python-reimplemented'):
     datas += copy_metadata(distribution)

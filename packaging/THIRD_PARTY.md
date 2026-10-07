@@ -74,3 +74,12 @@ downloaded from PyPI with its published SHA-256 and included in
 included in `source/ime/data/` and `source/native/rime/`; their provenance is
 documented in those directories. Whisper model weights are downloaded separately
 at the user's request and are not included in the executable archive.
+
+The Jyutping character/word readings are derived from CanCLID rime-cantonese
+(commit 259f0e48bba840c3a2e0d117539e96937f3d89bc), under CC BY 4.0.
+The attribution, modified-data provenance, full license, and reproducible build
+script are included in source/ime/data and source/scripts/build_jyutping.py.
+Ranking frequencies also use the separately licensed Rime essay data; its
+LGPL-3.0/GPL-3.0 notices and frequency source remain included in source/native/rime.
+Optional SenseVoice/Torch/FunASR source dependencies and weights are not bundled
+in the standard frozen desktop runtime.

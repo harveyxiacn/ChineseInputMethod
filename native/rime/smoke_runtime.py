@@ -35,7 +35,7 @@ def main():
             'schema:\n  schema_id: existing\n  name: Existing test keyboard\n  version: "1"\n'
             'engine:\n  processors: [ascii_composer]\n'
             '  segmentors: [ascii_segmentor]\n  translators: [echo_translator]\n', encoding="utf-8")
-        install(user)
+        install(user, schemes=("pinyin", "shuangpin", "jyutping"))
         subprocess.run([str(args.executable.resolve()), str(user), str(shared)], check=True)
         print("Installed dictionary and schema validated using the native librime engine.")
 

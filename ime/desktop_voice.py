@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from array import array
 import io
+import inspect
+from concurrent.futures import ThreadPoolExecutor
 import queue
 import sys
 import threading
@@ -67,8 +69,28 @@ def pcm_to_wav(pcm: bytes, sample_rate: int) -> bytes:
     return output.getvalue()
 
 
+def live_audio(audio):
+    """Normalize a desktop microphone snapshot to LiveTranscript's PCM format."""
+    with wave.open(io.BytesIO(audio), "rb") as wav:
+        rate = wav.getframerate()
+        if wav.getnchannels() != 1 or wav.getsampwidth() != 2:
+            raise RecordingError("麦克风返回的音频格式无效。")
+        pcm = wav.readframes(wav.getnframes())
+    if rate == 16000:
+        return audio
+    # sounddevice already depends on numpy; keep the import lazy for CLI/tests.
+    import numpy as np
+    from .live_speech import wav_bytes
+    samples = np.frombuffer(pcm, dtype="<i2")
+    count = len(samples) * 16000 // rate
+    positions = np.arange(count) * (rate / 16000)
+    resampled = np.interp(positions, np.arange(len(samples)), samples).astype("<i2")
+    return wav_bytes(resampled.tobytes())
+
+
 def record_microphone(stop, cancel, device=None, *, backend=None,
-                      seconds=MAX_RECORDING_SECONDS, on_started=None):
+                      seconds=MAX_RECORDING_SECONDS, on_started=None,
+                      on_preview=None, on_level=None):
     """Capture mono native-endian int16 PCM in memory; never write audio to disk."""
     if not 0 < seconds <= MAX_RECORDING_SECONDS:
         raise ValueError("Invalid recording duration")
@@ -94,8 +116,13 @@ def record_microphone(stop, cancel, device=None, *, backend=None,
                 overflow.set()
             count = min(frames, max_frames - captured)
             if count > 0:
-                chunks.append(bytes(data)[:count * 2])
+                chunk = bytes(data)[:count * 2]
+                chunks.append(chunk)
                 captured += count
+                if on_level:
+                    samples = array("h", chunk)
+                    level = (sum(value * value for value in samples) / max(1, len(samples))) ** .5 / 32768
+                    on_level(min(1.0, level))
             if captured >= max_frames:
                 raise backend.CallbackStop()
 
@@ -107,11 +134,16 @@ def record_microphone(stop, cancel, device=None, *, backend=None,
             if on_started:
                 on_started()
             deadline = time.monotonic() + seconds + 2
+            next_preview = time.monotonic() + 3
             while not finished.wait(0.05):
                 if stop.is_set() or cancel.is_set():
                     break
                 if time.monotonic() >= deadline:
                     raise RecordingError("麦克风停止响应，请检查设备后重试。")
+                if on_preview and time.monotonic() >= next_preview:
+                    if captured >= sample_rate * 3:
+                        on_preview(pcm_to_wav(b"".join(chunks), sample_rate))
+                    next_preview = time.monotonic() + 3
         if cancel.is_set():
             raise RecordingCancelled()
         if overflow.is_set():
@@ -144,8 +176,8 @@ class DictationJob:
     def busy(self):
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, language="zh", script="simplified", device=None):
-        if language not in {"zh", "yue", "auto"} or script not in {
+    def start(self, language="zh", script="simplified", device=None, *, hotwords=None, initial_prompt=None):
+        if language not in {"zh", "yue", "en", "auto"} or script not in {
                 "simplified", "traditional", "original"}:
             raise ValueError("Invalid language or script")
         with self._lock:
@@ -154,7 +186,7 @@ class DictationJob:
             self.stop_event.clear()
             self.cancel_event.clear()
             self._thread = threading.Thread(
-                target=self._run, args=(language, script, device), daemon=True,
+                target=self._run, args=(language, script, device, hotwords, initial_prompt), daemon=True,
                 name="desktop-dictation",
             )
             self._thread.start()
@@ -167,16 +199,55 @@ class DictationJob:
         self.cancel_event.set()
         self.stop_event.set()
 
-    def _run(self, language, script, device):
+    def _run(self, language, script, device, hotwords=None, initial_prompt=None):
         try:
-            audio = self.recorder(
-                self.stop_event, self.cancel_event, device,
-                on_started=lambda: self.events.put(("recording", None)),
-            )
+            from .live_speech import LiveTranscript
+            live_enabled = "on_preview" in inspect.signature(self.recorder).parameters
+            pending = None
+
+            def emit(text):
+                if not self.cancel_event.is_set():
+                    self.events.put(("partial", text))
+
+            live = LiveTranscript(self.service, language, script, emit,
+                                  hotwords=hotwords, initial_prompt=initial_prompt)
+
+            def recognize_preview(audio):
+                if self.cancel_event.is_set():
+                    return
+                try:
+                    live.update(live_audio(audio))
+                except Exception as exc:
+                    if not self.cancel_event.is_set():
+                        self.events.put(("stage", "预览暂不可用：" + str(exc)))
+
+            def preview(audio):
+                nonlocal pending
+                if self.cancel_event.is_set() or (pending is not None and not pending.done()):
+                    return
+                pending = executor.submit(recognize_preview, audio)
+
+            options = {"on_started": lambda: self.events.put(("recording", None))}
+            if live_enabled:
+                options.update(on_preview=preview, on_level=lambda value: (
+                    self.events.put(("level", value)) if not self.cancel_event.is_set() else None))
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                audio = self.recorder(self.stop_event, self.cancel_event, device, **options)
+                if pending is not None:
+                    pending.result()
             if self.cancel_event.is_set():
                 raise RecordingCancelled()
             self.events.put(("transcribing", None))
-            result = self.service.transcribe(audio, language, script)
+            if live_enabled:
+                self.events.put(("stage", "正在完成转写"))
+                result = {"text": live.update(live_audio(audio), final=True)}
+            else:
+                hints = {}
+                if hotwords is not None:
+                    hints["hotwords"] = hotwords
+                if initial_prompt is not None:
+                    hints["initial_prompt"] = initial_prompt
+                result = self.service.transcribe(audio, language, script, **hints)
             if self.cancel_event.is_set():
                 raise RecordingCancelled()
             text = result["text"].strip()
@@ -196,8 +267,13 @@ class DictationJob:
 
 class GlobalShortcut:
     """Optional listener. No keystrokes are saved or simulated."""
-    def __init__(self, callback):
+    def __init__(self, callback, *, hotkey="<ctrl>+<alt>+<space>", mode="toggle", on_release=None):
+        if mode not in {"toggle", "hold"}:
+            raise ValueError("Shortcut mode must be toggle or hold")
         self.callback = callback
+        self.hotkey = hotkey
+        self.mode = mode
+        self.on_release = on_release
         self.listener = None
 
     def start(self):
@@ -214,9 +290,32 @@ class GlobalShortcut:
                 if not AXIsProcessTrusted():
                     return "全局快捷键需在系统设置中允许辅助功能/输入监控；授权后重启应用，也可使用录音按钮。"
             from pynput import keyboard
-            self.listener = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": self.callback})
+            if self.mode == "hold":
+                chord = set(keyboard.HotKey.parse(self.hotkey))
+                pressed = set()
+                active = False
+
+                def on_press(key):
+                    nonlocal active
+                    pressed.add(self.listener.canonical(key))
+                    if not active and chord <= pressed:
+                        active = True
+                        self.callback()
+
+                def on_release(key):
+                    nonlocal active
+                    pressed.discard(self.listener.canonical(key))
+                    if active and not chord <= pressed:
+                        active = False
+                        if self.on_release:
+                            self.on_release()
+
+                self.listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+            else:
+                self.listener = keyboard.GlobalHotKeys({self.hotkey: self.callback})
             self.listener.start()
-            return "Ctrl+Alt+Space 开始/停止录音（macOS：Control+Option+Space）。"
+            label = self.hotkey.replace("<", "").replace(">", "").replace("ctrl", "Ctrl").replace("alt", "Alt").replace("space", "Space")
+            return label + (" 按住录音，松开完成。" if self.mode == "hold" else " 开始/停止录音（macOS：Control+Option+Space）。")
         except Exception:
             self.stop()
             return "全局快捷键不可用，请使用窗口中的录音按钮。"

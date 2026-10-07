@@ -29,6 +29,51 @@ class NativeVoiceTests(unittest.TestCase):
         stop_recorder(process)
         process.send_signal.assert_not_called()
 
+    def test_native_launch_uses_reusable_client_and_keeps_output_framing(self):
+        import io
+        from unittest.mock import patch
+        from ime.live_speech import RATE, wav_bytes
+        from ime.native_voice import main
+        audio = wav_bytes(b'\x01\x20' * RATE * 4)
+        service = Mock()
+        service.transcribe.return_value = {'text': 'John did not pay 42'}
+
+        def recorder(path, stop, preview=None):
+            path.write_bytes(audio)
+
+        output = io.StringIO()
+        with patch('sys.argv', ['native_voice', '--language', 'en', '--script', 'original', '--protocol']), \
+             patch('ime.native_voice.signal.signal'), patch('ime.native_voice.record', side_effect=recorder), \
+             patch('ime.speech_daemon.SpeechDaemonClient', return_value=service), patch('sys.stdout', output):
+            self.assertEqual(main(), 0)
+        self.assertEqual(output.getvalue(), 'SHUANGSHENG_PARTIAL\nJohn did not pay 42\nSHUANGSHENG_END\nSHUANGSHENG_OK\nJohn did not pay 42\nSHUANGSHENG_END\n')
+        self.assertEqual(service.transcribe.call_args.args[1:], ('en', 'original'))
+
+    def test_native_cancel_during_inference_delivers_no_transcript(self):
+        import io
+        from unittest.mock import patch
+        from ime.live_speech import RATE, wav_bytes
+        from ime.native_voice import main
+        audio = wav_bytes(b'\x01\x20' * RATE * 4)
+        handlers = {}
+
+        def recorder(path, stop, preview=None):
+            path.write_bytes(audio)
+
+        def transcribe(*args, **kwargs):
+            handlers[signal.SIGTERM]()
+            return {'text': 'must not appear'}
+
+        service = Mock()
+        service.transcribe.side_effect = transcribe
+        output = io.StringIO()
+        with patch('sys.argv', ['native_voice', '--protocol']), \
+             patch('ime.native_voice.signal.signal', side_effect=lambda kind, handler: handlers.update({kind: handler})), \
+             patch('ime.native_voice.record', side_effect=recorder), \
+             patch('ime.speech_daemon.SpeechDaemonClient', return_value=service), patch('sys.stdout', output):
+            self.assertEqual(main(), 130)
+        self.assertEqual(output.getvalue(), '')
+
 
 class RecordingTests(unittest.TestCase):
     def run_recording(self, returncode=1, running=True, stderr=None, silent=False,

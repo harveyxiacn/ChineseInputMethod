@@ -2,6 +2,7 @@
 #pragma once
 #include "paths.h"
 #include <libime/core/historybigram.h>
+#include <libime/core/prediction.h>
 #include <libime/core/languagemodel.h>
 #include <libime/core/userlanguagemodel.h>
 #include <libime/pinyin/pinyincontext.h>
@@ -42,6 +43,11 @@ public:
     libime::PinyinIME *ime() { return &ime_; }
     std::string display(const std::string &text, bool traditional) const {
         return traditional ? traditional_.Convert(text) : text;
+    }
+    std::vector<std::string> predict(const std::string &previous, size_t limit=5) {
+        if(previous.empty())return {};
+        libime::Prediction prediction;prediction.setUserLanguageModel(ime_.model());
+        return prediction.predict(std::vector<std::string>{previous},limit);
     }
     void save() {
         if (storage_.empty()) return;

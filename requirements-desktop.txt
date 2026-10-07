@@ -4,3 +4,5 @@ sounddevice>=0.5,<0.6
 pynput>=1.8,<2
 # Desktop checks macOS accessibility directly, without requesting permission.
 pyobjc-framework-ApplicationServices>=8,<13; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=8,<13; sys_platform == "darwin"
+pyobjc-framework-Quartz>=8,<13; sys_platform == "darwin"

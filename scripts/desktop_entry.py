@@ -28,6 +28,7 @@ def verify_runtime() -> dict:
     if sys.platform == "darwin":
         import HIServices
         import Quartz
+        import AppKit
         assert callable(HIServices.AXIsProcessTrusted), "macOS accessibility bindings missing"
     # The real backend needs desktop permissions/display. Check the common
     # keyboard code here; interactive platform testing is documented separately.
@@ -48,6 +49,10 @@ def verify_runtime() -> dict:
     assert (root / "static" / "index.html").is_file(), "Browser assets missing"
     assert (root / "native" / "rime" / "shuangsheng.schema.yaml").is_file(), "Rime schema missing"
     assert (root / "ime" / "data" / "luna_pinyin.dict.yaml").is_file(), "Rime dictionary missing"
+    for filename in ("common.tsv", "jyutping.tsv", "LICENSE.cantonese"):
+        assert (root / "ime" / "data" / filename).is_file(), f"Input resource missing: {filename}"
+    for scheme in ("shuangpin", "jyutping"):
+        assert (root / "native" / "rime" / f"shuangsheng_{scheme}.schema.yaml").is_file(), f"Rime {scheme} schema missing"
     return {"libraries": list(modules), "audio_samples": len(waveform), "vad": "passed",
             "cpu_compute_types": compute_types}
 
@@ -62,6 +67,30 @@ def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+    # Administrative commands never redirect to another installed version.
+    no_redirect = "--no-update-redirect" in args
+    if no_redirect:
+        args.remove("--no-update-redirect")
+    if args and args[0] == "--version":
+        from ime.updater import application_version
+        print(application_version())
+        return 0
+    if args and args[0] == "--update":
+        from ime.updater import main as update
+        return update(args[1:])
+    if args and args[0] == "--native-voice":
+        from ime.native_voice import main as voice
+        return voice(args[1:])
+    if args and args[0] == "--speech-daemon":
+        from ime.speech_daemon import main as daemon
+        return daemon(args[1:])
+    if not args and not no_redirect:
+        from ime.updater import Updater
+        try:
+            if Updater().redirect():
+                return 0
+        except Exception as exc:
+            print(f"Saved update could not start; using this installation: {exc}", file=sys.stderr)
     if args and args[0] == "--install-rime":
         from scripts.install_rime import main as install
         return install(args[1:])
@@ -80,6 +109,8 @@ def main(argv=None):
         if len(args) > 1:
             Path(args[1]).write_text(json.dumps(checks, indent=2), encoding="utf-8")
         print(json.dumps(checks))
+        from ime.updater import acknowledge_startup
+        acknowledge_startup()
         return 0
     from ime.desktop import main as desktop
     return desktop(args)

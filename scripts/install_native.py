@@ -1,6 +1,6 @@
 """Build and install the Fcitx5 keyboard for the current Linux user.
 
-Requires fcitx5, libime (with data), opencc, Boost headers, cmake, and a C++20 compiler. No root is needed
+Requires fcitx5, libime (with data), opencc, json-c, Boost headers, cmake, and a C++20 compiler. No root is needed
 for this script. Installs user configuration and enables a desktop-session
 service. The checkout and its .venv must remain at their current location.
 """
@@ -38,6 +38,11 @@ def main():
     subprocess.run(['cmake', '--build', str(build), '-j2'], check=True)
     subprocess.run(['ctest', '--test-dir', str(build), '--output-on-failure'], check=True)
     subprocess.run(['cmake', '--install', str(build)], check=True)
+    bridge = ROOT / '.cache/pinyin-bridge'
+    subprocess.run(['cmake', '-S', str(ROOT / 'native/pinyin_bridge'), '-B', str(bridge),
+                    '-DCMAKE_BUILD_TYPE=Release', f'-DCMAKE_INSTALL_PREFIX={prefix}'], check=True)
+    subprocess.run(['cmake', '--build', str(bridge), '-j2'], check=True)
+    subprocess.run(['cmake', '--install', str(bridge)], check=True)
     config = home / '.config'
     profile = config / 'fcitx5/profile'
     if profile.exists() and 'Name=shuangsheng' not in profile.read_text():

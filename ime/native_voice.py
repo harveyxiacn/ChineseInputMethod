@@ -19,7 +19,6 @@ import tempfile
 import threading
 import wave
 
-from .speech import SpeechService
 from .live_speech import LiveTranscript
 
 
@@ -125,16 +124,18 @@ def record(path, stop, seconds=115, preview=None):
         validate_recording(path)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--language", choices=["zh", "yue"], default="zh")
-    parser.add_argument("--script", choices=["simplified", "traditional"], default="simplified")
+    parser.add_argument("--language", choices=["zh", "yue", "en", "auto"], default="zh")
+    parser.add_argument("--script", choices=["simplified", "traditional", "original"], default="simplified")
     parser.add_argument("--protocol", action="store_true", help="Frame successful output for the native addon")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     stop = threading.Event()
+    cancelled = threading.Event()
     signal.signal(signal.SIGUSR1, lambda *_: stop.set())
 
     def cancel(*_):
+        cancelled.set()
         raise Cancelled()
 
     signal.signal(signal.SIGTERM, cancel)
@@ -142,17 +143,22 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="shuangsheng-voice-") as directory:
             path = Path(directory) / "recording.wav"
-            service = SpeechService()
+            # The trusted local daemon owns weights across native worker launches.
+            # Import lazily: fcntl/Unix IPC is not part of the desktop runtime.
+            from .speech_daemon import SpeechDaemonClient
+            service = SpeechDaemonClient()
             pending = None
 
             def emit(text):
                 text = " ".join(text.splitlines()).strip()
-                if text and args.protocol:
+                if text and args.protocol and not cancelled.is_set():
                     print("SHUANGSHENG_PARTIAL\n" + text + "\nSHUANGSHENG_END", flush=True)
 
             live = LiveTranscript(service, args.language, args.script, emit)
 
             def recognize_preview(audio):
+                if cancelled.is_set():
+                    return
                 try:
                     live.update(audio)
                 except Exception as exc:
@@ -160,6 +166,8 @@ def main():
 
             def preview(path):
                 nonlocal pending
+                if cancelled.is_set():
+                    return
                 if pending is not None and not pending.done():
                     return
                 audio = recording_snapshot(path)
@@ -175,6 +183,8 @@ def main():
                 else:
                     result = service.transcribe(path.read_bytes(), args.language, args.script)
             if result["text"].strip():
+                if cancelled.is_set():
+                    raise Cancelled()
                 text = result["text"].strip()
                 if args.protocol:
                     print("SHUANGSHENG_OK\n" + text + "\nSHUANGSHENG_END", flush=True)

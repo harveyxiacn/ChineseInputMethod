@@ -14,8 +14,38 @@ hosted speech service are used.
 Rime provides native composition, candidate windows, sentence input, and local
 learning on Windows and macOS. The desktop companion records and transcribes
 Mandarin/Cantonese, lets you review the result, and copies it for pasting into
-your application. The Linux Fcitx5 addon also offers integrated dictation with
+your application. Opt-in Windows/macOS target insertion is available for supported
+editable controls, with review/copy retained when focus, permissions, or widget
+support prevents insertion. The Linux Fcitx5 addon also offers integrated dictation with
 live preedit and direct insertion into the original text field.
+
+## Input, personalization, and speech updates
+
+The desktop and browser pad support full pinyin, Xiaohe double pinyin, and real
+Jyutping with optional tones, mixed English/Chinese input, personal terminology,
+shortcut templates, and predictions learned from explicit selections. A reusable
+libime bridge gives the Linux pads the native statistical sentence model; other
+platforms retain a dictionary fallback alongside their native Rime input method.
+See [input engines and local learning](docs/input.md).
+
+Preferences persist across restarts. The editor includes undoable clear, optional
+draft recovery, compact/high-contrast display, a shared term manager, and an
+optional local AI assistant with editable previews for polishing, translation,
+and sentence completion. The assistant is disabled until you enable a local
+HTTP model service. No hosted API or key is required.
+
+Native Linux dictation reuses a per-user speech worker across recordings, with
+idle model unloading. Browser recording sends incremental audio; desktop recording
+shows live text and microphone level. Model prewarm/unload controls and explicit
+cancel are available. [Implementation and platform boundaries](docs/iteration.md)
+describes what is supported and how to verify it. [Evaluation instructions](benchmarks/README.md)
+cover candidate accuracy and local speech timing/error reports without uploading recordings.
+
+Version 0.4.0 adds explicit **Check updates…** in the desktop app, with verified
+downloads, retained versions, startup checks and managed rollback. Existing Linux
+native installations are rebuilt and activated from the verified release as part
+of installation. [Update and bootstrap instructions](docs/updates.md) describe
+the one-time upgrade from 0.3.0, which did not have an update client.
 
 ## Install Windows / macOS / Linux releases
 
@@ -57,7 +87,7 @@ installer is an alternative for users with an existing Rime frontend.
 Install Fcitx5 and its integrations. On Arch/CachyOS:
 
 ```bash
-sudo pacman -S --needed fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool libime opencc boost cmake gcc
+sudo pacman -S --needed fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool libime opencc boost json-c cmake gcc
 ```
 
 Set up voice dependencies and weights using the instructions below, then:
@@ -108,9 +138,11 @@ preedit and the browser shows a live transcript below the recording button.
 Stopping performs a final transcription and inserts the result once. Escape
 in the native input method discards the preview.
 
-Native live dictation checks for new audio every 3 seconds and processes
+Native live dictation checks for new audio every 3 seconds and consumes
 windows of at most 12 seconds, preferring pauses after 5 seconds as boundaries.
-Confirmed windows are reused; stopping recognizes only the remaining tail.
+Confirmed windows are reused; forced window boundaries retain one second of
+context, so a decode may contain up to 13 seconds. Stopping recognizes only the
+remaining tail and its boundary context.
 Live decoding uses a narrower beam for speed. Continuous speech without pauses
 may lose accuracy at window boundaries. Model loading and CPU inference still
 affect latency. If final inference or capture fails, the native addon inserts
@@ -118,25 +150,29 @@ the latest displayed preview and warns that the ending may be incomplete;
 Escape and changing focus still cancel without inserting text. Error diagnostics
 are available in `journalctl --user -u shuangsheng.service`.
 
-The browser currently uses complete audio snapshots for its live preview, so
-long browser recordings may still slow down. Browser capture requires AudioWorklet
-on localhost or HTTPS. Uploaded files use one-shot transcription.
+The browser sends new PCM samples to bounded, cancellable live sessions; completed
+segments are reused. Browser capture requires AudioWorklet on localhost or HTTPS.
+Uploaded files use one-shot transcription. If text is edited during recording,
+the transcript remains in the preview instead of overwriting those edits.
 Rebuild/reinstall the native addon after updating this checkout.
 
 Password/sensitive fields bypass this engine. Language
-and script selections currently last for the Fcitx process lifetime.
+and script selections are saved in shared local preferences. Per-application
+profiles may choose Chinese or English keyboard input.
 Chinese mode converts common punctuation (`, . ? ! : ; ( ) [ ] < >`),
 backslash to `、`, paired quotes, `^` to `……`, and `_` to `——`.
 A period immediately after a typed digit stays ASCII for decimals. Apostrophes
 inside pinyin remain syllable separators. The browser applies this conversion
-in its pinyin input; the document editor remains free-form. Switch to English
-mode for URLs or code in native applications.
+in its pinyin input; the document editor remains free-form. English identifiers, URLs, email addresses, version strings and paths can remain
+literal during composition; Enter always commits the original spelling. English
+mode remains available for extended code input.
 
 The native adapter uses libime's full pinyin dictionary and statistical language
 model, including sentence composition and phrase-by-phrase selection. Type a
 full sentence such as `wojintianxiangquchaoshimaidongxi`, or select shorter
 phrases from the candidate list while continuing to compose the remainder.
-This native engine is independent of the browser pad's basic TSV decoder.
+The desktop/browser engine can reuse the same system dictionary and language
+model through the optional local libime bridge.
 The installed libime dictionary on the development machine has 300,234 entries.
 Selected words and phrases improve future ranking. Learning stays locally in
 `~/.local/share/shuangsheng/{user.dict,history}` (or under `XDG_DATA_HOME`).
@@ -229,7 +265,8 @@ under `.cache/huggingface`; packaged apps use the user's writable cache director
 `$XDG_CACHE_HOME/shuangsheng/huggingface` or `~/.cache/shuangsheng/huggingface`
 on Linux). `HF_HOME` can override that location.
 After setup, the server loads only cached weights and transcription works
-offline. The first recording loads the model and takes longer. CPU inference
+offline. The first recording loads the model and takes longer; model prewarm is available.
+Native recordings share a private worker that releases an idle model after five minutes. CPU inference
 uses int8; allow several GB of available RAM. Long recordings can take longer
 than their duration on CPU. Python 3.11/3.12 are conservative choices for binary
 dependency availability; this workspace was also tested with Python 3.14.
@@ -258,8 +295,9 @@ and busy inference return visible errors. There is no cloud fallback.
 
 The Linux Fcitx5 addon and the Windows/macOS Rime frontends provide system-wide
 input in compatible applications. Rime uses its native pinyin engine, private
-user dictionary, and sentence composition. The desktop and browser pads use
-the project's smaller portable Python decoder. Windows TSF and macOS
+user dictionary, and sentence composition. The desktop and browser pads use a
+persistent local libime bridge when available, with a portable Python decoder
+as fallback. Windows TSF and macOS
 InputMethodKit integration is supplied by Weasel and Squirrel respectively.
 
 - `static/`: responsive, keyboard-accessible editor; no frontend build required.
@@ -271,10 +309,11 @@ InputMethodKit integration is supplied by Weasel and Squirrel respectively.
   voice activity detection, duration checks, and one transcription at a time.
 - `ime/conversion.py`: OpenCC simplified/traditional conversion.
 - `ime/server.py`: standard-library HTTP service restricted to localhost and
-  same-origin requests. No audio persistence or document storage.
+  same-origin requests. No audio persistence; browser draft storage is opt-in.
 - `native/fcitx5/`: native C++ candidate UI and application text insertion.
-- `native/rime/`: portable native pinyin scheme, punctuation, and librime runtime test.
-- `ime/desktop.py`: desktop pinyin/voice interface and explicit copy workflow.
+- `native/rime/`: full pinyin, Xiaohe and Jyutping schemes, punctuation, and librime runtime test.
+- `ime/desktop.py`: desktop editor, voice, shared settings and vocabulary; optional
+  Windows/macOS insertion with target checks and explicit copy fallback.
 - `ime/desktop_voice.py`: bounded, cancellable cross-platform microphone recording.
 - `ime/native_voice.py`: bounded PipeWire recording and local transcription;
   temporary recordings are deleted on completion or normal cancellation.
@@ -282,13 +321,15 @@ InputMethodKit integration is supplied by Weasel and Squirrel respectively.
 - `scripts/install_rime.py`: Windows/macOS/Linux Rime configuration installation.
 - `.github/workflows/release.yml`: tested platform archives and tag-triggered GitHub releases.
 
-The portable pad's pinyin ranking uses basic dictionary weights and a small
-authored common-word overlay; it does not reproduce the native engines' ranking
-or learn your habits. The browser and Fcitx5 addon provide revisable live speech
-previews; the desktop companion transcribes after recording stops. Whisper can make
-mistakes, especially with accents, noise, code-switching, or short Cantonese
-clips; review results before using them. The browser document exists only in the current tab
-and is lost on reload unless copied or downloaded.
+The portable decoder combines dictionary weights and an authored common-word
+overlay with explicit local selection history. Where installed, libime supplies
+sentence ranking and statistical next-word predictions. Shared personal terms
+and context-specific learned predictions work across the companion and Linux addon.
+The browser, desktop companion and Fcitx5 addon provide revisable live speech
+previews. Whisper can make mistakes, especially with accents, noise,
+code-switching, or short Cantonese clips; review results before using them.
+Draft recovery is optional and disabled by default; enable it or explicitly save
+the document to preserve an editing session.
 
 ## Open-source foundations
 

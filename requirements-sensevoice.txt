@@ -1,0 +1,8 @@
+# Optional source-only recognizer; keep the standard Whisper installation usable.
+-r requirements.txt
+funasr>=1.4.14,<2
+omegaconf>=2.3,<3
+sentencepiece>=0.2,<0.3
+# Install matching torch/torchaudio builds for your operating system/device.
+torch>=2,<3
+torchaudio>=2,<3

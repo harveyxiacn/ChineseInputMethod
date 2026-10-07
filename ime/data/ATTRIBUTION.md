@@ -1,5 +1,8 @@
 # Dictionary provenance
 
+`common.tsv` supplies 30 authored common phrase fallbacks, including polyphonic
+readings such as 银行, 音乐, and 重庆.
+
 `starter.tsv` is an authored demonstration vocabulary (165 entries), maintained
 with this application. It supplies common phrase rankings and explicit simplified
 and traditional forms. It is not a complete Chinese lexicon.
@@ -31,9 +34,30 @@ python scripts/build_dictionary.py
 To explicitly update to the latest upstream source, use `--download`. Review
 upstream changes and license before redistributing an updated dictionary.
 
-This decoder does not embed librime and does not reproduce Rime's statistical
-ranking or preset vocabulary. Dictionary coverage is broad, but rankings are
-basic and there is no personalized learning. OpenCC phrase conversion may have
-contextual ambiguities. Remove/replace `rime.tsv` to use the starter vocabulary
-or an independently supplied TSV (simplified, traditional, spaced pinyin,
-weight; tab-separated UTF-8).
+The optional local `native/pinyin_bridge` uses the installed libime dictionary
+and statistical language model; no model files are downloaded or embedded.
+Without that helper, the Python decoder uses phrase weights and full-input beam
+composition. Explicit commits alone train the private local lexicon. OpenCC
+phrase conversion may have contextual ambiguities.
+
+`jyutping.tsv` derives from CanCLID's Rime Cantonese dictionary, pinned to commit
+`259f0e48bba840c3a2e0d117539e96937f3d89bc` in
+https://github.com/rime/rime-cantonese (retrieved 2026-10-07).
+Copyright: CanCLID and the contributors named in the upstream dictionaries.
+The character and word dictionaries are licensed under CC BY 4.0; its full text
+is bundled as `LICENSE.cantonese`. Upstream sources:
+https://github.com/CanCLID/rime-cantonese-upstream.
+Changes: YAML metadata removed; records without explicit romanizations excluded;
+character pronunciation percentages combined with the existing essay frequencies
+for ranking; duplicate text/romanization rows merged. No readings are inferred.
+The ODbL mapping datasets are not imported. `scripts/build_jyutping.py` records
+source SHA-256 checksums and rebuilds from a separately fetched pinned source.
+The derived dictionary contains real numbered Jyutping and supports toneless
+lookup; it is a phrase decoder, without a Cantonese statistical sentence model.
+
+The Jyutping ranking weights use the bundled Rime Developers' essay frequency
+data, under LGPL-3.0 (including its incorporated GPL-3.0 terms). The unchanged
+frequency source and its license are `native/rime/essay.txt` and
+`native/rime/LICENSE.essay`; its pinned commit and SHA-256 are recorded in
+`native/rime/NOTICE.md`. The character/word readings retain CC BY 4.0 attribution
+above. The `LICENSE.rime`/`LICENSE.GPL-3.0` files also accompany packaged data.

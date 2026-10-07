@@ -70,6 +70,8 @@ investigating regressions.
 Use the Actions **Cross-platform release → Run workflow** button for validation
 without publishing. It uploads all four build artifacts for 14 days. Running
 manually on a version tag also publishes after the same gates pass.
+Manual branch builds use the source version and record the exact commit in their
+manifest; they also run OTA acceptance but do not create a GitHub release.
 
 ## Publishing
 
@@ -90,6 +92,12 @@ macOS, or `Get-FileHash <archive> -Algorithm SHA256` in PowerShell. Checksums
 detect corruption; they are not a publisher signature.
 
 ## Automatic and interactive verification
+
+Stable release builds also run `tests/ota_release_smoke.py` against each actual
+archive before upload. It verifies checksum failure handling, extraction,
+runtime checks, activation and acknowledged restart, restoring the previous
+pointer and retaining configuration. See [application updates](updates.md) for
+the updater's trust boundary, Linux native activation and 0.3.0 bootstrap.
 
 The frozen smoke test runs outside the source checkout with offline model
 flags. It exercises pinyin dictionary lookup, speech-service status, Tk and

@@ -5,6 +5,8 @@ on:
   workflow_call:
 permissions:
   contents: read
+env:
+  PYTHONUTF8: '1'
 jobs:
   test:
     strategy:
@@ -32,19 +34,52 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python -m pip install -r requirements-rime.txt
-      - run: python -m unittest discover -v
+      - name: Install pure Python test dependencies
+        run: python -m pip install -r requirements-rime.txt 'opencc-python-reimplemented>=0.1.7,<0.2'
+      - name: Install Linux window test dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb xauth
+      - name: Run unit and native window tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a python -m unittest discover -v
+          else
+            python -m unittest discover -v
+          fi
       - run: node --check static/app.js
       - run: node --check static/capture.js
   native-build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install Fcitx5 development dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ pkg-config libboost-dev libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev libimecore-dev libimepinyin-dev libime-data libime-data-language-model libmarisa-dev libopencc-dev libjson-c-dev fcitx5-bin fcitx5-modules python3-gi dbus-daemon
       - run: cmake -S native/fcitx5 -B .cache/native-ci -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build .cache/native-ci -j2
       - run: ctest --test-dir .cache/native-ci --output-on-failure
+      - name: Exercise addon in a private input context
+        run: /usr/bin/python3 tests/native_isolated_smoke.py --build-dir .cache/native-ci
+      - name: Build optional statistical decoder
+        run: cmake -S native/pinyin_bridge -B .cache/pinyin-bridge -DCMAKE_BUILD_TYPE=Release && cmake --build .cache/pinyin-bridge -j2
+      - name: Test actual statistical decoder
+        run: |
+          python -m pip install 'opencc-python-reimplemented>=0.1.7,<0.2'
+          python -m unittest tests.test_input_engine tests.test_native_pinyin_bridge -v
+  browser-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-rime.txt 'opencc-python-reimplemented>=0.1.7,<0.2' 'playwright>=1.56,<2'
+      - run: python -m playwright install --with-deps chromium
+      - name: Exercise browser typing and simulated microphone
+        run: python tests/browser_smoke.py
   rime-engine:
     runs-on: ubuntu-24.04
     steps:

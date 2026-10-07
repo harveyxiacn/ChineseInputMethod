@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import math
 import os
 from pathlib import Path
 import platform
@@ -96,7 +97,7 @@ def load_config(text: str):
     return result
 
 
-def merge_schema_config(original: bytes) -> bytes:
+def merge_schema_config(original: bytes, schema_ids=None) -> bytes:
     """Append a Rime schema using the documented /+ patch operator.
 
     Keep all existing patch values, including schema lists, and refuse malformed
@@ -112,17 +113,22 @@ def merge_schema_config(original: bytes) -> bytes:
         patch = config["patch"] = {}
     if not isinstance(patch, dict):
         raise ValueError("The default.custom.yaml patch must be a mapping.")
+    requested = [SCHEMA_ID] if schema_ids is None else list(dict.fromkeys(schema_ids))
+    present = set()
     for key, value in patch.items():
         if not isinstance(key, str):
             raise ValueError("Rime patch keys must be strings.")
         if key == "schema_list" or key.startswith("schema_list/"):
             items = value if isinstance(value, list) else [value]
-            if any(isinstance(item, dict) and item.get("schema") == SCHEMA_ID for item in items):
-                return original
+            present.update(item["schema"] for item in items if isinstance(item, dict)
+                           and isinstance(item.get("schema"), str))
+    missing = [schema for schema in requested if schema not in present]
+    if not missing:
+        return original
     additions = patch.setdefault("schema_list/+", [])
     if not isinstance(additions, list):
         raise ValueError("Existing schema_list/+ must be a list; existing file was preserved.")
-    additions.append({"schema": SCHEMA_ID})
+    additions.extend({"schema": schema} for schema in missing)
     rendered = yaml_module().safe_dump(config, allow_unicode=True, sort_keys=False)
     return rendered.encode("utf-8")
 
@@ -145,6 +151,27 @@ def dictionary_bytes(root: Path = ROOT) -> bytes:
             + source).encode("utf-8")
 
 
+def jyutping_dictionary_bytes(root: Path = ROOT) -> bytes:
+    """Only explicit, licensed readings are used; validate before any writes."""
+    body = []
+    for line in (root / "ime/data/jyutping.tsv").read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith('#'):
+            continue
+        fields = line.split('\t')
+        if len(fields) != 3 or not fields[0] or not re.fullmatch(r'[a-z]+[1-6](?: [a-z]+[1-6])*', fields[1]):
+            raise ValueError('Malformed bundled Jyutping dictionary row')
+        weight = float(fields[2])
+        if not math.isfinite(weight) or weight < 0:
+            raise ValueError('Invalid bundled Jyutping dictionary weight')
+        body.append(line)
+    if not body:
+        raise ValueError('Bundled Jyutping dictionary is empty')
+    header = ('# Derived from CanCLID rime-cantonese; CC BY 4.0. See shuangsheng-NOTICE.cantonese.\n'
+              '---\nname: shuangsheng_jyutping\nversion: "2026.10.07"\nsort: by_weight\n'
+              'use_preset_vocabulary: false\ncolumns: [text, code, weight]\n...\n')
+    return (header + '\n'.join(body) + '\n').encode('utf-8')
+
+
 def atomic_write(path: Path, content: bytes) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix=".shuangsheng-", dir=path.parent)
     try:
@@ -156,8 +183,13 @@ def atomic_write(path: Path, content: bytes) -> None:
             os.unlink(temporary)
 
 
-def install(user_dir: Path, *, root: Path = ROOT, dry_run: bool = False) -> dict:
+def install(user_dir: Path, *, root: Path = ROOT, dry_run: bool = False, schemes=("pinyin",)) -> dict:
     """Validate everything before writing; retain unique backups of changed files."""
+    if (not isinstance(schemes, (tuple, list)) or not schemes or
+            any(not isinstance(item, str) or item not in {'pinyin', 'shuangpin', 'jyutping'} for item in schemes)):
+        raise ValueError('schemes must contain pinyin, shuangpin, or jyutping')
+    schemes = list(dict.fromkeys(schemes))
+    identifiers = [SCHEMA_ID if item == 'pinyin' else SCHEMA_ID + '_' + item for item in schemes]
     user_dir = user_dir.expanduser().absolute()
     custom = user_dir / "default.custom.yaml"
     if custom.is_symlink():
@@ -171,8 +203,23 @@ def install(user_dir: Path, *, root: Path = ROOT, dry_run: bool = False) -> dict
         "shuangsheng-LICENSE.LGPL-3.0": (root / "ime/data/LICENSE.rime").read_bytes(),
         "shuangsheng-LICENSE.GPL-3.0": (root / "ime/data/LICENSE.GPL-3.0").read_bytes(),
         "shuangsheng-NOTICE.md": (root / "native/rime/NOTICE.md").read_bytes(),
-        "default.custom.yaml": merge_schema_config(original),
+        "default.custom.yaml": merge_schema_config(original, identifiers),
     }
+    for scheme in schemes:
+        if scheme != 'pinyin':
+            name = 'shuangsheng_' + scheme + '.schema.yaml'
+            payload[name] = (root / 'native/rime' / name).read_bytes()
+    if 'jyutping' in schemes:
+        payload['shuangsheng_jyutping.dict.yaml'] = jyutping_dictionary_bytes(root)
+        payload['shuangsheng-LICENSE.cantonese'] = (root / 'ime/data/LICENSE.cantonese').read_bytes()
+        payload['shuangsheng-NOTICE.cantonese'] = (
+            'Readings: CanCLID and rime-cantonese contributors, CC BY 4.0.\n'
+            'Source: https://github.com/rime/rime-cantonese\n'
+            'Commit: 259f0e48bba840c3a2e0d117539e96937f3d89bc\n'
+            'Changes: YAML metadata removed, only explicit readings retained, duplicates merged.\n'
+            'Ranking frequencies: Rime Developers essay, LGPL-3.0 (GPL-3.0 incorporated).\n'
+            'See shuangsheng-NOTICE.md and accompanying licenses for essay provenance.\n'
+        ).encode('utf-8')
     changes = {}
     for name, content in payload.items():
         path = user_dir / name
@@ -219,11 +266,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=("windows", "macos", "linux"), default=current_platform())
     parser.add_argument("--user-dir", type=Path, help="Override the OS frontend's Rime user directory")
+    parser.add_argument("--schemes", nargs="+", choices=("pinyin", "shuangpin", "jyutping"), default=["pinyin"])
     parser.add_argument("--dry-run", action="store_true", help="Validate and list changes without writing")
     args = parser.parse_args(argv)
     try:
         user_dir = args.user_dir if args.user_dir is not None else default_user_dir(args.platform)
-        result = install(user_dir, dry_run=args.dry_run)
+        result = install(user_dir, dry_run=args.dry_run, schemes=args.schemes)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     print(("Would install into: " if args.dry_run else "Installed into: ") + result["user_dir"])
@@ -232,7 +280,7 @@ def main(argv=None) -> int:
         print("Backup: " + backup)
     if not args.dry_run:
         frontend = {"windows": "Weasel", "macos": "Squirrel", "linux": "Fcitx5-Rime"}.get(args.platform, "Rime")
-        print(f"In {frontend}, run Redeploy, then Ctrl+` or F4 and select 双声拼音.")
+        print(f"In {frontend}, run Redeploy, then Ctrl+` or F4 and select the installed Shuangsheng scheme.")
         print("Requires the native Rime frontend. Installation does not register a new OS keyboard.")
     return 0
 

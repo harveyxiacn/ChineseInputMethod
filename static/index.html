@@ -1,39 +1,26 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f4f2eb">
-  <title>双声 · Shuangsheng</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" defer></script>
-</head>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f4f2eb"><title>双声 · Shuangsheng</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script></head>
 <body>
-  <main class="workspace">
-    <header class="masthead">
-      <a class="brand" href="/" aria-label="Shuangsheng home"><span class="brand-mark" lang="zh">双</span><span>双声 <span class="brand-roman">Shuangsheng</span></span></a>
-      <span class="local-badge"><span class="dot"></span> Your words, on your machine</span>
-    </header>
-    <section class="intro" aria-labelledby="title">
-      <div><p class="eyebrow">TWO LANGUAGES. YOUR VOICE.</p><h1 id="title">A little closer to<br><span lang="zh">你想说的话。</span></h1><p class="subtitle">Write with pinyin. Speak in Mandarin or Cantonese.<br>Make room for the words that come naturally.</p></div>
-      <div class="intro-art" aria-hidden="true"><span class="art-word">言</span><span class="art-caption">THOUGHT → WORD</span></div>
-    </section>
-    <div class="editor-grid">
-      <section class="document-panel" aria-labelledby="document-title">
-        <div class="panel-heading"><div><span class="section-number">01</span><h2 id="document-title">Your words</h2></div><label class="script-label" for="script">Characters <select id="script"><option value="simplified">简体 · Simplified</option><option value="traditional">繁體 · Traditional</option></select></label></div>
-        <label class="sr-only" for="document">Your Chinese text</label>
-        <textarea id="document" spellcheck="false" placeholder="从一句话开始…&#10;Start with a thought." aria-describedby="document-hint"></textarea>
-        <div class="document-footer"><span id="character-count">0 characters</span><div class="document-actions"><button id="clear" class="text-button" type="button">Clear</button><button id="download" class="text-button" type="button">Download</button><button id="copy" class="small-button" type="button">Copy text <span aria-hidden="true">↗</span></button></div></div>
-        <p id="document-hint" class="document-hint">Click anywhere in your text to choose where the next words go.</p>
-      </section>
-      <aside class="input-panel" aria-label="Input tools">
-        <section class="pinyin-section" aria-labelledby="pinyin-title"><div class="tool-heading"><span class="section-number">02</span><h2 id="pinyin-title">Type in pinyin</h2><span class="tool-symbol" aria-hidden="true">Aa</span></div><label class="sr-only" for="pinyin">Pinyin syllables</label><input id="pinyin" type="text" placeholder="Try nihao or zhongguo" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="pinyin-hint" aria-controls="candidates"><div id="candidates" class="candidates" role="group" aria-label="Chinese candidates"><span class="candidate-empty">Your characters will appear here.</span></div><p id="pinyin-hint" class="input-hint"><kbd>Space</kbd> select · <kbd>1–9</kbd> choose · <kbd>←</kbd> <kbd>→</kbd> browse<br><kbd>Enter</kbd> insert as typed · <kbd>Esc</kbd> reset</p></section>
-        <section class="voice-section" aria-labelledby="voice-title"><div class="tool-heading"><span class="section-number">03</span><h2 id="voice-title">Speak your mind</h2><span class="tool-symbol" aria-hidden="true">◖◗</span></div><label for="language" class="field-label">Spoken language</label><select id="language"><option value="zh">普通话 · Mandarin</option><option value="yue">廣東話 · Cantonese</option><option value="auto">Detect automatically</option></select><button id="record" class="record-button" type="button"><span class="record-icon" aria-hidden="true">●</span><span id="record-label">Start recording</span><span id="record-time" aria-hidden="true"></span></button><p id="live-transcript" class="input-hint" role="status" aria-live="polite" aria-label="Live transcription"></p><div class="upload-row"><span>Already have a recording?</span><label class="upload-label" for="audio-file">Upload audio<input id="audio-file" type="file" accept="audio/*,.webm,.mp4,.m4a,.wav,.mp3,.ogg,.flac"></label></div><p id="speech-status" class="speech-status">Checking local speech service…</p></section>
-        <div class="privacy-note"><span aria-hidden="true">⌂</span><p>Transcribed by your local speech model. Audio is sent only to this app’s server. Uploads: up to 16 MiB and 2 minutes. Microphone: up to 1:55.</p></div>
-      </aside>
-    </div>
-    <div id="status" class="status" role="status" aria-live="polite"></div>
-    <footer class="page-footer"><span lang="zh">落笔有声，表达自由。</span><span>PINYIN + VOICE / LOCAL FIRST</span></footer>
-  </main>
-</body>
-</html>
+<main class="workspace">
+<header class="masthead"><a class="brand" href="/" aria-label="双声主页"><span class="brand-mark">双</span><span>双声 <small>Shuangsheng</small></span></a><div class="header-actions"><span class="local-badge">● 本地输入 · 本地听写</span><button id="compact" class="text-button" aria-pressed="false">紧凑模式</button><button id="settings-open" class="small-button">设置</button></div></header>
+<details class="intro"><summary>让文字更接近你想说的话。</summary><p>拼音、双拼与粤拼输入，普通话 / 粤语 / 英语本地听写。常用词和偏好保存在本机。</p></details>
+<div class="editor-grid">
+<section class="document-panel" aria-labelledby="document-title">
+<div class="panel-heading"><h1 id="document-title">你的文字</h1><label>输出 <select id="script"><option value="simplified">简体</option><option value="traditional">繁體</option></select></label></div>
+<label class="sr-only" for="document">可编辑的文字</label><textarea id="document" spellcheck="false" placeholder="从一句话开始…" aria-describedby="document-hint"></textarea>
+<div class="document-footer"><span id="character-count">0 字</span><div class="document-actions"><button id="undo" class="text-button" disabled>撤销</button><button id="clear" class="text-button">清空</button><button id="download" class="text-button">保存</button><button id="copy" class="small-button">复制文字</button></div></div>
+<p id="document-hint" class="document-hint">点击文本选择插入位置。语音结束后插入到开始录音时的位置。</p>
+<div class="assistant-actions"><span>本地智能助手</span><button data-assist="polish" class="text-button">整理表达</button><button data-assist="translate" class="text-button">翻译</button><button data-assist="complete" class="text-button">续写一句</button></div>
+</section>
+<aside class="input-panel" aria-label="输入工具">
+<section class="pinyin-section"><div class="tool-heading"><h2>键盘输入</h2><button id="input-mode" class="text-button" aria-pressed="false" aria-label="切换中文或英文输入">中 · 中文</button><select id="scheme" aria-label="输入方案"><option value="pinyin">全拼</option><option value="shuangpin">小鹤双拼</option><option value="jyutping">粤拼</option></select></div><label class="sr-only" for="pinyin">拼音或英文</label><input id="pinyin" type="text" placeholder="nihao · Python3.12 · /date" autocomplete="off" autocapitalize="off" spellcheck="false" aria-controls="candidates" aria-describedby="pinyin-hint"><div id="candidates" class="candidates" role="group" aria-label="候选词"></div><p id="pinyin-hint" class="input-hint"><kbd>空格</kbd> 选词 · <kbd>1–9</kbd> 选择 · <kbd>↑ ↓</kbd> 浏览<br><kbd>回车</kbd> 原文 · <kbd>Esc</kbd> 取消；粤拼数字为声调，Alt+数字选词</p><button id="lexicon-open" class="text-button">个人词库与短语…</button></section>
+<section class="voice-section"><div class="tool-heading"><h2>本地听写</h2><select id="language" aria-label="语音语言"><option value="zh">普通话</option><option value="yue">粤语</option><option value="en">English</option><option value="auto">自动 / 混合</option></select></div><div class="record-controls"><button id="record" class="record-button"><span aria-hidden="true">●</span> <span id="record-label">开始录音</span><span id="record-time"></span></button><button id="cancel-record" class="text-button" disabled>取消</button></div><label class="meter-label">输入音量 <meter id="level" min="0" max="1" value="0">0</meter></label><p id="live-transcript" class="live-transcript" role="status" aria-live="polite"><span id="stable-transcript"></span><span id="draft-transcript"></span></p><div class="upload-row"><label class="upload-label" for="audio-file">上传录音<input id="audio-file" type="file" accept="audio/*,.webm,.mp4,.m4a,.wav,.mp3,.ogg,.flac"></label><button id="warmup" class="text-button">预热模型</button><button id="unload" class="text-button">释放模型</button></div><p id="speech-status" class="speech-status">正在检查语音服务…</p></section>
+<p class="privacy-note">录音最长 115 秒；上传最大 16 MiB / 2 分钟。浏览器音频仅发送到本机服务。麦克风录音可随时取消。</p>
+</aside></div>
+<div id="status" class="status" role="status" aria-live="polite"></div><footer class="page-footer">落笔有声，表达自由。<span>PINYIN + VOICE / LOCAL FIRST</span></footer>
+</main>
+<dialog id="settings-dialog"><form id="settings-form"><div class="dialog-heading"><h2>输入与显示设置</h2><button type="button" data-close="settings-dialog" aria-label="关闭设置">×</button></div><div class="form-grid"><label>主题<select name="theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option><option value="contrast">高对比度</option></select></label><label>字号<input name="font_size" type="number" min="12" max="32"></label><label>候选数量<input name="candidate_count" type="number" min="3" max="9"></label><label>模糊音对<input name="fuzzy_pairs" placeholder="zh:z, n:l, ang:an"></label><label>Whisper 背景提示<input name="initial_prompt" maxlength="2000"></label><label>语音模型<input name="model" placeholder="large-v3 或本地目录"></label><label>计算设备<select name="device"><option value="cpu">CPU</option><option value="cuda">CUDA</option><option value="auto">自动</option></select></label><label>语音后端<select name="backend"><option value="whisper">Whisper</option><option value="sensevoice">SenseVoice（需本地模型）</option></select></label><label>SenseVoice 目录<input name="sensevoice_model"></label><label>术语提示<input name="hotwords" placeholder="项目名、人名、专业词"></label></div><label class="check"><input name="fuzzy" type="checkbox">启用模糊音</label><label class="check"><input name="save_draft" type="checkbox">在此浏览器保存草稿（关闭后可恢复）</label><label class="check"><input name="push_to_talk" type="checkbox">按住录音按钮说话，松开结束</label><label class="check"><input name="llm_enabled" type="checkbox">启用本地智能助手；操作时才发送所选文字</label><div class="form-grid"><label>本地助手地址<input name="llm_url" placeholder="http://127.0.0.1:8080"></label><label>模型名称（空白为自动）<input name="llm_model"></label></div><label>应用偏好 JSON（桌面原目标可执行路径 / macOS bundle ID）<textarea name="app_profiles" spellcheck="false"></textarea></label><p class="input-hint">浏览器无法识别其他应用的焦点；按应用偏好用于桌面入口。模型不会自动下载。智能助手结果始终先预览。设置在本机多个入口之间共享，浏览器草稿仅保存在当前浏览器。</p><button class="small-button" type="submit">保存设置</button></form></dialog>
+<dialog id="lexicon-dialog"><div class="dialog-heading"><h2>个人词库与短语</h2><button data-close="lexicon-dialog" aria-label="关闭词库">×</button></div><form id="term-form" class="form-grid"><label>文字 / 模板<textarea name="text" required maxlength="512"></textarea></label><label>拼音<input name="pinyin" placeholder="xiang mu ming"></label><label>快捷短语<input name="shortcut" placeholder="/sig"></label><label class="check"><input name="pinned" type="checkbox">置顶</label><button class="small-button" type="submit">添加 / 更新</button></form><div id="terms" class="terms"></div><div class="dialog-actions"><button id="terms-export">导出词库</button><label class="upload-label">导入 JSON<input id="terms-import" type="file" accept="application/json,.json"></label></div></dialog>
+<dialog id="assistant-dialog"><div class="dialog-heading"><h2>智能助手预览</h2><button data-close="assistant-dialog" aria-label="关闭预览">×</button></div><label>目标语言（翻译）<input id="translate-language" value="English" maxlength="40"></label><div class="assistant-columns"><div><label for="assistant-original">原文</label><textarea id="assistant-original" readonly></textarea></div><div><label for="assistant-result">建议（可编辑）</label><textarea id="assistant-result"></textarea></div></div><p id="assistant-status" role="status"></p><div class="dialog-actions"><button id="assistant-run">生成建议</button><button id="assistant-accept" class="small-button" disabled>采用建议</button></div></dialog>
+</body></html>

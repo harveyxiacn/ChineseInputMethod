@@ -134,11 +134,56 @@ int main(int argc, char** argv) {
     const std::string mark = punctuation.text ? punctuation.text : "";
     api->free_commit(&punctuation);
     require(mark == "，", "Wrong Chinese punctuation: " + mark);
+    // Exercise the installed optional schemas through the real deployed prisms.
+    api->clear_composition(session);
+    require(api->select_schema(session, "shuangsheng_shuangpin"), "Cannot select Xiaohe schema");
+    api->set_option(session, "ascii_mode", False);
+    api->set_option(session, "simplification", True);
+    expect_candidate("nihc", "你好");
+    expect_candidate("vsgo", "中国");
+    const auto double_sentence = compose("wojbtmxlquicuimddsxi");
+    require(double_sentence.front() == "我今天想去超市买东西", "Xiaohe sentence ranking is incorrect");
+    require(commit() == double_sentence.front(), "Xiaohe sentence commit changed");
+    api->set_option(session, "simplification", False);
+    expect_candidate("vsgo", "中國");
+    api->clear_composition(session);
+    require(api->select_schema(session, "shuangsheng_jyutping"), "Cannot select Jyutping schema");
+    api->set_option(session, "ascii_mode", False);
+    api->set_option(session, "simplification", True);
+    expect_candidate("nei5hou2", "你好");
+    require(std::string(api->get_input(session)) == "nei5hou2", "Tone digit selected a candidate instead of remaining input");
+    expect_candidate("neihou", "你好");
+    expect_candidate("gwong2dung1", "广东");
+    const auto incorrect_tone = compose("nei4hou2");
+    for (const auto &candidate : incorrect_tone)
+      require(candidate != "你好", "A numbered Jyutping tone was ignored");
+    api->set_option(session, "simplification", False);
+    expect_candidate("gwong2dung1", "廣東");
+    api->set_option(session, "simplification", True);
+    compose("nei5hou2");
+    require(commit() == "你好", "Jyutping Space commit failed");
+    compose("nei5hou2");
+    require(api->process_key(session, '1', 1 << 3), "Alt+1 was not handled");
+    RIME_STRUCT(RimeCommit, alt_first);
+    require(api->get_commit(session, &alt_first), "Alt+1 did not commit a candidate");
+    require(std::string(alt_first.text) == "你好", "Alt+1 committed the wrong candidate");
+    api->free_commit(&alt_first);
+    compose("zi6");
+    RIME_STRUCT(RimeContext, alt_menu);
+    require(api->get_context(session, &alt_menu), "No alternate selection menu");
+    require(alt_menu.menu.num_candidates > 1, "Need two Jyutping candidates for alternate selection");
+    std::string alternate = alt_menu.menu.candidates[1].text;
+    api->free_context(&alt_menu);
+    require(api->process_key(session, '2', 1 << 3), "Alt+2 was not handled");
+    RIME_STRUCT(RimeCommit, alt_second);
+    require(api->get_commit(session, &alt_second), "Alt+2 did not commit a candidate");
+    require(std::string(alt_second.text) == alternate, "Alt+2 committed the wrong candidate");
+    api->free_commit(&alt_second);
     api->destroy_session(session);
     session = 0;
     api->finalize();
     std::cout << "PASS: deployment, schema preservation, candidates, simplified/traditional, "
-                 "paging, numeric selection, sentence commit, editing, and punctuation\n";
+                 "paging, numeric selection, sentence commit, editing, punctuation, Xiaohe, and Jyutping tones/scripts\n";
     return 0;
   } catch (const std::exception& error) {
     if (session) api->destroy_session(session);

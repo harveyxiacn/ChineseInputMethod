@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {"id": "pinyin-greeting", "query": "nihao", "expected": "你好"},
+    {"id": "pinyin-country", "query": "zhongguo", "expected": "中国"},
+    {"id": "pinyin-boundaries", "query": "xi'an", "expected": "西安"},
+    {"id": "mixed-brand-number", "query": "OpenAI42", "expected": "OpenAI42"},
+    {"id": "mixed-chinese-english", "query": "今天OpenAI42", "expected": "今天OpenAI42"},
+    {"id": "number-exact", "query": "42.5", "expected": "42.5"},
+    {"id": "jyutping-greeting", "query": "nei5 hou2", "expected": "你好", "scheme": "jyutping", "script": "traditional"},
+    {"id": "jyutping-thanks", "query": "m4 goi1", "expected": "唔該", "scheme": "jyutping", "script": "traditional"}
+  ]
+}
