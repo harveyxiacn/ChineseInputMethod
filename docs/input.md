@@ -23,6 +23,11 @@ one. Without the bridge, the Python decoder uses the bundled character
 vocabulary, common authored phrases, and a full-input beam decoder. Its
 sentence ranking is less capable, especially with ambiguous pronunciations.
 No model downloads occur when entering text.
+Ubuntu's libime 1.1.5 retains sentence composition, personal ranking and
+next-phrase suggestions. Statistical candidate ranking across previously
+committed words additionally requires newer libime context-word APIs; the
+native addon and bridge detect these APIs at compile time and safely omit that
+extra context on older supported versions.
 
 Build the bridge separately without installing or changing user configuration:
 

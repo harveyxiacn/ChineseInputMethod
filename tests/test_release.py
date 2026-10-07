@@ -8,6 +8,13 @@ from scripts import build_release
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_notices_include_license_text_but_not_copying_test_binaries(self):
+        for name in ['pkg.dist-info/licenses/LICENSE', 'COPYING.LESSER', 'COPYING.LIB', 'NOTICE.txt', 'libavcodec.COPYRIGHT']:
+            self.assertTrue(build_release.is_notice_path(Path(name)), name)
+        for name in ['PyObjCTest/_copying.cpython-312-darwin.so', 'tests/test_copying.py',
+                     '_copying.so.dSYM/Contents/Resources/DWARF/_copying.so', 'random/data.txt']:
+            self.assertFalse(build_release.is_notice_path(Path(name)), name)
+
     def test_incomplete_or_mixed_release_cannot_publish(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

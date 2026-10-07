@@ -27,6 +27,17 @@ SOURCE_FILES = ("README.md", "LICENSE", "CONTRIBUTING.md", "requirements.txt",
                 "requirements-desktop.txt", "requirements-rime.txt", "requirements-sensevoice.txt")
 
 
+def is_notice_path(relative):
+    # PyObjC ships test_copying extension modules and matching debug bundles;
+    # these are executable test code, not redistribution license notices.
+    if any(part.lower().endswith('.dsym') for part in relative.parts):
+        return False
+    if re.search(r'\.(so(?:\.\d+)*|dylib|dll|exe|pyd|pyc|pyo|py|pyi)$', relative.name, re.I):
+        return False
+    return any(re.search(r"(^|[._-])(licenses?|copying|notice|copyright)([._-]|$)", part, re.I)
+               for part in relative.parts)
+
+
 def validate_version(value):
     if not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?", value):
         raise ValueError("Version must be a semantic version, such as v0.3.0 or 0.3.0-rc.1")
@@ -95,8 +106,7 @@ def write_metadata(directory, version, target):
         destination = notices / safe_name
         for relative in distribution.files or ():
             # Includes .dist-info/licenses and bundled FFmpeg/OpenSSL notices.
-            if any(re.search(r"(^|[._-])(licenses?|copying|notice|copyright)([._-]|$)", part, re.I)
-                   for part in relative.parts):
+            if is_notice_path(relative):
                 original = Path(distribution.locate_file(relative))
                 if original.is_file():
                     destination.mkdir(parents=True, exist_ok=True)

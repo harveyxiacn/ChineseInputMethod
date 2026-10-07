@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Read-only decoder bridge. A process owns one immutable local dictionary/model.
+#include "../libime_compat.h"
 #include <libime/core/languagemodel.h>
 #include <libime/core/userlanguagemodel.h>
 #include <libime/core/prediction.h>
@@ -44,7 +45,7 @@ void emit(libime::PinyinIME &ime, const std::string &query, const std::string &s
     }
     libime::PinyinContext context(&ime);
     context.setUseShuangpin(scheme == "shuangpin");
-    if (!previous.empty()) context.setContextWords({previous});
+    if (!previous.empty()) shuangsheng::setPinyinContextWords(context,{previous});
     context.type(query);
     const auto &candidates = context.candidates();
     for (size_t i = 0; i < candidates.size() && static_cast<int>(i) < limit; ++i) {
@@ -52,7 +53,7 @@ void emit(libime::PinyinIME &ime, const std::string &query, const std::string &s
         // bridge returns candidates that consume the whole input only.
         libime::PinyinContext check(&ime);
         check.setUseShuangpin(context.useShuangpin());
-        if (!previous.empty()) check.setContextWords({previous});
+        if (!previous.empty()) shuangsheng::setPinyinContextWords(check,{previous});
         check.type(query); check.select(i);
         if (!check.selected()) continue;
         auto text = candidates[i].toString(); auto code = context.candidateFullPinyin(i);

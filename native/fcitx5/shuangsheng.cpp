@@ -82,7 +82,7 @@ public:
         if (voiceContext_ == event.inputContext()) cancelVoice();
         clear(event.inputContext());
         auto *state=event.inputContext()->propertyFor(&factory_);state->punctuation={};
-        state->recent.clear();state->lastCommit.clear();state->context.clearContextWords();
+        state->recent.clear();state->lastCommit.clear();shuangsheng::clearPinyinContextWords(state->context);
     }
     void commit(InputContext *ic, const std::string &text) {
         // Candidate selection may destroy the CandidateWord; copy before clearing UI.
@@ -90,7 +90,7 @@ public:
         auto value=text; clear(ic); if (ic->hasFocus() && !sensitive(ic)) {
             ic->commitString(value); auto *state=ic->propertyFor(&factory_);
             state->recent=shuangsheng::contextTail(state->recent+value);state->lastCommit=value;
-            state->context.setContextWords({value});
+            shuangsheng::setPinyinContextWords(state->context,{value});
         }
     }
     void custom(InputContext *ic,const std::string &text,const std::string &query) {
@@ -116,7 +116,7 @@ public:
             if(voiceHeld_ && voiceContext_==ic && (event.key().sym()==voiceTrigger_ || event.key().sym()==FcitxKey_Control_L || event.key().sym()==FcitxKey_Alt_L || event.key().sym()==FcitxKey_Control_R || event.key().sym()==FcitxKey_Alt_R)) {voiceHeld_=false;stopping_=true;event.filterAndAccept();}
             return;
         }
-        if (sensitive(ic)) { if (voiceContext_==ic) cancelVoice(); clear(ic);auto *state=ic->propertyFor(&factory_);state->recent.clear();state->lastCommit.clear();state->context.clearContextWords();return; }
+        if (sensitive(ic)) { if (voiceContext_==ic) cancelVoice(); clear(ic);auto *state=ic->propertyFor(&factory_);state->recent.clear();state->lastCommit.clear();shuangsheng::clearPinyinContextWords(state->context);return; }
         auto key=event.key(); auto *state=ic->propertyFor(&factory_); auto &context=state->context;
         auto prefs=personal_.preferences(ic->program());
         if(pid_<=0){traditional_=prefs.traditional;language_=prefs.language;}

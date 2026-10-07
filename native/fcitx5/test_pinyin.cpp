@@ -7,7 +7,30 @@
 void require(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(message);
 }
+void testContextCompatibility() {
+    struct LegacyContext {};
+    struct ModernContext {
+        std::vector<std::string> words;
+        void setContextWords(const std::vector<std::string> &value) { words=value; }
+        void clearContextWords() { words.clear(); }
+    };
+    struct UnclearableContext {
+        bool touched=false;
+        void setContextWords(const std::vector<std::string> &) { touched=true; }
+    };
+    LegacyContext legacy;
+    require(!shuangsheng::setPinyinContextWords(legacy,{"之前"}) &&
+            !shuangsheng::clearPinyinContextWords(legacy), "Legacy decoder context fallback failed");
+    ModernContext modern;
+    require(shuangsheng::setPinyinContextWords(modern,{"之前","你好"}) &&
+            modern.words==std::vector<std::string>({"之前","你好"}), "Modern context words were lost");
+    require(shuangsheng::clearPinyinContextWords(modern) && modern.words.empty(), "Modern context was not cleared");
+    UnclearableContext partial;
+    require(!shuangsheng::setPinyinContextWords(partial,{"私密"}) && !partial.touched &&
+            !shuangsheng::clearPinyinContextWords(partial), "Context must not be stored without a clearing API");
+}
 int main() {
+    testContextCompatibility();
     shuangsheng::Punctuation punctuation;
     require(punctuation.convert(',')=="，", "Chinese comma missing");
     require(punctuation.convert('"')=="“" && punctuation.convert('"')=="”", "Quote pairing failed");

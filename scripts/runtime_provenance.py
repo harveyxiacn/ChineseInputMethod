@@ -22,6 +22,7 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+DAV1D_ARCHIVE_URL = "https://code.videolan.org/videolan/dav1d/-/archive/1.5.3/dav1d-1.5.3.tar.bz2"
 
 
 def sha256(path):
@@ -105,18 +106,30 @@ def download_verified(record, cache):
     path = cache / filename
     if path.is_file() and sha256(path) == record["sha256"]:
         return path
+    # VideoLAN can serve an anti-bot HTML page with HTTP 200 at the bare URL.
+    # These official GitLab download variants have been verified to supply the
+    # exact same pinned archive bytes. Every response still passes SHA-256.
+    urls = ((record["url"], record["url"] + "?ref_type=tags", record["url"] + "?download=1")
+            if record["name"] == "dav1d" and record["url"] == DAV1D_ARCHIVE_URL
+            else (record["url"],) * 3)
     failure = None
-    for attempt in range(3):
+    for attempt, url in enumerate(urls):
         temporary = None
         try:
-            request = urllib.request.Request(record["url"], headers={"User-Agent": "Shuangsheng-source-archive/1.0"})
+            request = urllib.request.Request(url, headers={"User-Agent": "Shuangsheng-source-archive/1.0"})
             with urllib.request.urlopen(request, timeout=90) as source:
                 with tempfile.NamedTemporaryFile(dir=cache, delete=False) as output:
                     temporary = Path(output.name)
                     shutil.copyfileobj(source, output)
             actual = sha256(temporary)
             if actual != record["sha256"]:
-                raise ValueError(f"Source checksum mismatch for {record['name']}: {actual}")
+                detail = ""
+                if record["name"] == "dav1d" and record["url"] == DAV1D_ARCHIVE_URL:
+                    with temporary.open("rb") as stream:
+                        prefix = stream.read(256).lstrip().lower()
+                    if prefix.startswith((b"<!doctype html", b"<html")):
+                        detail = " (VideoLAN returned HTML instead of the pinned source archive)"
+                raise ValueError(f"Source checksum mismatch for {record['name']}: {actual}{detail}")
             temporary.replace(path)
             return path
         except (OSError, ValueError) as exc:

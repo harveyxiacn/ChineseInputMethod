@@ -42,6 +42,34 @@ class SourceArchiveTests(unittest.TestCase):
                     runtime_provenance.download_verified(record, Path(temporary))
             self.assertEqual(list(Path(temporary).iterdir()), [])
 
+    def test_dav1d_official_download_variant_requires_exact_bytes(self):
+        content = b'exact pinned archive'
+        record = {'name': 'dav1d', 'url': runtime_provenance.DAV1D_ARCHIVE_URL,
+                  'sha256': hashlib.sha256(content).hexdigest()}
+        responses = [b'<!doctype html><title>Making sure you are not a bot!</title>',
+                     b'wrong source archive', content]
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(runtime_provenance.urllib.request, 'urlopen',
+                              side_effect=lambda *a, **k: io.BytesIO(responses.pop(0))) as request, \
+                    patch.object(runtime_provenance.time, 'sleep'):
+                path = runtime_provenance.download_verified(record, Path(temporary))
+            self.assertEqual(path.read_bytes(), content)
+            self.assertEqual(runtime_provenance.sha256(path), record['sha256'])
+            self.assertEqual([call.args[0].full_url for call in request.call_args_list],
+                             [record['url'], record['url'] + '?ref_type=tags', record['url'] + '?download=1'])
+            self.assertEqual(list(Path(temporary).iterdir()), [path])
+
+    def test_dav1d_html_on_all_variants_is_rejected_without_cache(self):
+        record = {'name': 'dav1d', 'url': runtime_provenance.DAV1D_ARCHIVE_URL, 'sha256': '0' * 64}
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(runtime_provenance.urllib.request, 'urlopen',
+                              side_effect=lambda *a, **k: io.BytesIO(b'<html>not an archive</html>')) as request, \
+                    patch.object(runtime_provenance.time, 'sleep'):
+                with self.assertRaisesRegex(RuntimeError, 'VideoLAN returned HTML'):
+                    runtime_provenance.download_verified(record, Path(temporary))
+            self.assertEqual(request.call_count, 3)
+            self.assertEqual(list(Path(temporary).iterdir()), [])
+
     def test_unreviewed_pyav_version_fails_before_network_or_writes(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "source"

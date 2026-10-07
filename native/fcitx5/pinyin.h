@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "paths.h"
+#include "../libime_compat.h"
 #include <libime/core/historybigram.h>
 #include <libime/core/prediction.h>
 #include <libime/core/languagemodel.h>
