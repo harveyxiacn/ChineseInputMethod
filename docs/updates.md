@@ -34,7 +34,8 @@ versions are under `%LOCALAPPDATA%/shuangsheng/updates`,
 `~/Library/Application Support/shuangsheng/updates`, or
 `${XDG_DATA_HOME:-~/.local/share}/shuangsheng/updates`. Settings, personal terms,
 drafts and speech model caches remain in their existing separate locations.
-Do not delete a retained version while its application/native addon is running.
+Do not delete a retained version while its application/native addon is running
+or a desktop shortcut still points to its original launcher.
 
 For the first **source-to-package** installation, source speech weights default
 to `<checkout>/.cache/huggingface`; packaged applications use
@@ -151,3 +152,32 @@ certificate-path problem above: the source updater had working OS roots, while
 the frozen OpenSSL default pointed at a build-host path absent on this machine.
 Selecting the existing OS CA bundle restored verified HTTPS in 0.4.0; the 0.4.2
 fix and live frozen HTTPS release gate address this gap.
+
+### v0.4.2 release and installed OTA acceptance — 2026-10-07
+
+- [Public release](https://github.com/harveyxiacn/ChineseInputMethod/releases/tag/v0.4.2),
+  commit `2d46210225c9ca398fdd28408c8d317ed68a4c41`:
+  [all 14 release jobs passed](https://github.com/harveyxiacn/ChineseInputMethod/actions/runs/37575317994),
+  including real frozen HTTPS checks and the installation harness on all four
+  platforms. The unreleased 0.4.1 tag encountered CI shared-IP API rate limits;
+  the CI-only read-only token avoids that limit without changing TLS checks.
+  Normal application updates need no token. The optional
+  `SHUANGSHENG_GITHUB_TOKEN` is sent only to the fixed latest-release API URL and
+  is removed on every redirect; it is never sent to archive download hosts.
+- The **installed 0.4.0 frozen executable** performed a real GitHub OTA download
+  and installation of 0.4.2 on Linux. Its one-time `SSL_CERT_FILE` setting selected
+  the existing OS roots. The active record now contains current `v0.4.2` and
+  previous `v0.4.0`; both managed packages remain present.
+- Fcitx restarted successfully and mapped the native addon from the retained
+  0.4.2 directory. The existing profile's hash was unchanged. The updated desktop
+  confirmed startup, and the installed executable reported `0.4.2`.
+- The new frozen executable checked real GitHub with both `SSL_CERT_FILE` and
+  `SSL_CERT_DIR` overrides removed and correctly reported no newer version.
+  Its offline runtime smoke passed, with the existing Whisper cache ready and
+  no model loaded by the smoke check. No microphone recording was required.
+- Linux archive SHA-256:
+  `edef9e15742586445a3b39ece16e8fb7e54d827f68e518d486b83b6133818787`.
+
+Windows/macOS runtime and OTA checks ran on their matching CI systems;
+interactive desktop permissions and third-party Rime host upgrades still require
+their separate platform acceptance.
