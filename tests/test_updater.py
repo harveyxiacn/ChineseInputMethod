@@ -186,6 +186,31 @@ class UpdaterTests(unittest.TestCase):
         self.assertIs(https._context, context)
         self.assertEqual(build.return_value.open.call_args.kwargs['timeout'], 45)
 
+    def test_optional_api_credential_never_reaches_downloads_or_redirects(self):
+        token = 'ghs_synthetic_test_credential'
+        with patch.dict(os.environ, {'SHUANGSHENG_GITHUB_TOKEN':token}), \
+             patch.object(module, '_tls_context', return_value=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)), \
+             patch.object(module.urllib.request, 'build_opener') as build:
+            module.open_url(module.API_URL)
+            request = build.return_value.open.call_args.args[0]
+            self.assertEqual(request.get_header('Authorization'), 'Bearer '+token)
+            redirected = module._Redirects().redirect_request(request, None, 302, 'Found', {}, 'https://github.com/redirect')
+            self.assertIsNone(redirected.get_header('Authorization'))
+            module.open_url('https://github.com/'+module.REPOSITORY+'/releases/download/v0.4.2/SHA256SUMS')
+            self.assertIsNone(build.return_value.open.call_args.args[0].get_header('Authorization'))
+            module.open_url('https://api.github.com/another/endpoint')
+            self.assertIsNone(build.return_value.open.call_args.args[0].get_header('Authorization'))
+
+    def test_invalid_api_credential_fails_without_logging_its_value(self):
+        secret = 'synthetic-secret\nInjected: header'
+        with patch.dict(os.environ, {'SHUANGSHENG_GITHUB_TOKEN':secret}), \
+             patch.object(module.urllib.request, 'build_opener') as build:
+            with self.assertRaises(UpdateError) as raised:
+                module.open_url(module.API_URL)
+        self.assertNotIn(secret, str(raised.exception))
+        self.assertNotIn('synthetic-secret', str(raised.exception))
+        build.assert_not_called()
+
     def test_check_report_written_only_after_successful_check(self):
         report = self.root / 'check.json'
         with patch.object(module.Updater, 'check', return_value=None), patch('sys.stdout', io.StringIO()):

@@ -50,6 +50,7 @@ jobs:
           key: native-sources-${{ runner.os }}-${{ hashFiles('packaging/pyav-sources.json', 'requirements-desktop.txt') }}
       - name: Build, relocate and smoke-test application
         env:
+          SHUANGSHENG_GITHUB_TOKEN: ${{ github.token }}
           RELEASE_REF: ${{ github.ref_name }}
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash

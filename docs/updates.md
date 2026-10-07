@@ -1,7 +1,7 @@
 # Application updates
 
 Version 0.4.0 introduces **检查更新… / Check updates…** in the desktop toolbar.
-Version 0.4.1 fixes frozen HTTPS trust-store discovery across Linux distributions
+Version 0.4.2 fixes frozen HTTPS trust-store discovery across Linux distributions
 and adds an actual GitHub HTTPS check to each packaged release gate.
 Checking is explicit; launching the app does not fetch releases or model files.
 The updater selects the latest stable release from
@@ -9,7 +9,7 @@ The updater selects the latest stable release from
 or Intel. Development/prerelease builds are not offered.
 
 Version 0.3.0 did not contain an update client. Its first upgrade therefore
-requires downloading/extracting 0.4.1 or launching the new updater from source.
+requires downloading/extracting 0.4.2 or launching the new updater from source.
 It cannot acquire an in-app update button retroactively.
 `python scripts/desktop_entry.py --update install
 --bootstrap` performs that first managed installation from source. This explicit
@@ -68,8 +68,8 @@ roots when Python has no default store. Explicit `SSL_CERT_FILE`/`SSL_CERT_DIR`
 settings are honored. Certificate and hostname verification are always enabled.
 On a Linux distribution affected by the 0.4.0 certificate-path bug, launch its
 updater once with `SSL_CERT_FILE` pointing to the installed system CA bundle
-(for example `/etc/ssl/cert.pem` on Arch Linux) to acquire 0.4.1. This selects
-trusted certificates; it does not disable verification. Version 0.4.1 discovers
+(for example `/etc/ssl/cert.pem` on Arch Linux) to acquire 0.4.2. This selects
+trusted certificates; it does not disable verification. Version 0.4.2 discovers
 these OS paths itself.
 
 Rollback switches to the preceding **managed** version. On the first managed
@@ -112,7 +112,7 @@ GitHub URLs; production has no alternate feed or HTTP bypass. The harness checks
 bad checksums, real extraction, the new binary's smoke test, activation,
 acknowledged child startup, restoring the old pointer and unchanged configuration.
 This verifies all four package formats/runtimes without publishing a partial
-release. Since 0.4.1 the release gate additionally invokes the actual frozen
+release. Since 0.4.2 the release gate additionally invokes the actual frozen
 executable's `--update check --report <file>` against GitHub. A nonzero exit or
 missing/invalid report fails the build, including certificate, HTTP and network
 errors. The offline smoke check remains offline.
@@ -149,5 +149,5 @@ host upgrades were not part of this acceptance.
 A subsequent direct check from the installed 0.4.0 executable exposed the Linux
 certificate-path problem above: the source updater had working OS roots, while
 the frozen OpenSSL default pointed at a build-host path absent on this machine.
-Selecting the existing OS CA bundle restored verified HTTPS in 0.4.0; the 0.4.1
+Selecting the existing OS CA bundle restored verified HTTPS in 0.4.0; the 0.4.2
 fix and live frozen HTTPS release gate address this gap.

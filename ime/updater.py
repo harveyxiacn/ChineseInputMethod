@@ -110,7 +110,11 @@ def validate_url(url):
 class _Redirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, message, headers, newurl):
         validate_url(newurl)
-        return super().redirect_request(request, fp, code, message, headers, newurl)
+        redirected = super().redirect_request(request, fp, code, message, headers, newurl)
+        if redirected is not None:
+            # A CI API credential is never forwarded to redirected/download URLs.
+            redirected.remove_header("Authorization")
+        return redirected
 
 
 def _tls_context():
@@ -138,6 +142,11 @@ def _tls_context():
 def open_url(url):
     validate_url(url)
     request = urllib.request.Request(url, headers={"User-Agent": "Shuangsheng-Updater/0.4", "Accept": "application/json" if url == API_URL else "application/octet-stream"})
+    token = os.environ.get("SHUANGSHENG_GITHUB_TOKEN") if url == API_URL else None
+    if token:
+        if len(token) > 4096 or not re.fullmatch(r"[A-Za-z0-9_.-]+", token, re.ASCII):
+            raise UpdateError("Invalid update API credential format.")
+        request.add_unredirected_header("Authorization", "Bearer " + token)
     https = urllib.request.HTTPSHandler(context=_tls_context())
     return urllib.request.build_opener(_Redirects(), https).open(request, timeout=45)
 
