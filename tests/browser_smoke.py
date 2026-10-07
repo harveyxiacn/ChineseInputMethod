@@ -71,7 +71,7 @@ def main():
                 page = browser.new_page(viewport={"width": 1360, "height": 1000})
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.goto(f"http://127.0.0.1:{server.server_port}")
-                page.wait_for_function("window.__shuangshengReady")
+                page.wait_for_function("() => window.__shuangshengReady")
                 editor, query = page.locator("#document"), page.locator("#pinyin")
                 def at_end():
                     editor.evaluate("e => { e.focus(); e.setSelectionRange(e.value.length, e.value.length); e.dispatchEvent(new Event('select')); }")
@@ -189,7 +189,7 @@ def main():
                 assert prefs.get("fuzzy_pairs") == [["zh", "z"], ["n", "l"]]
                 draft = editor.input_value()
                 page.reload()
-                page.wait_for_function("window.__shuangshengReady")
+                page.wait_for_function("() => window.__shuangshengReady")
                 expect(editor).to_have_value(draft)
                 assert page.evaluate("getComputedStyle(document.getElementById('document')).fontSize") == "22px"
                 page.locator("#settings-open").click()

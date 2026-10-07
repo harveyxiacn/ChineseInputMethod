@@ -66,6 +66,9 @@ Both native launch modes are supported: source installs use their configured
 Python interpreter; OTA installs use the new package's frozen voice executable.
 The new addon reads its own retained source dictionaries, without depending on a
 developer checkout or `.venv`. Speech workers use versioned sockets.
+Managed launches disable the companion's global keyboard listener when the Linux
+native addon is installed, leaving the shared dictation shortcut to the addon;
+the companion's recording button remains available.
 
 Finish native dictation before updating. Successful activation atomically
 switches the two user-level native binaries and briefly restarts

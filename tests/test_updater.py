@@ -217,6 +217,19 @@ class UpdaterTests(unittest.TestCase):
         for key in ['LD_LIBRARY_PATH','TCL_LIBRARY','PYTHONPATH']:self.assertNotIn(key,environment)
         self.assertEqual(environment['PYINSTALLER_RESET_ENVIRONMENT'],'1')
 
+    def test_native_addon_owns_shortcut_when_updated_companion_starts(self):
+        record=self.prepare()
+        def spawn(command, **kwargs):
+            environment=kwargs['env']
+            (self.updater.root/'launch'/environment['SHUANGSHENG_OTA_READY']).write_text('ready',encoding='ascii')
+            self.assertIn('--no-hotkey',command)
+            self.assertIn('--no-update-redirect',command)
+            self.assertEqual(environment['SHUANGSHENG_UPDATE_ROOT'],str(self.updater.root.resolve()))
+            return Mock()
+        with patch.object(self.updater,'native_installed',return_value=True), patch.object(module.subprocess,'Popen',side_effect=spawn) as process:
+            self.updater.launch(record)
+            process.assert_called_once()
+
 
 @unittest.skipUnless(os.name=='posix','POSIX atomic symlinks')
 class NativeActivationTests(unittest.TestCase):

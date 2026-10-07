@@ -463,6 +463,9 @@ class Updater:
         environment = subprocess_environment()
         environment.update(SHUANGSHENG_OTA_READY=token, SHUANGSHENG_UPDATE_ROOT=str(self.root.resolve()))
         command = [str(executable), "--no-update-redirect", *args]
+        if not args and self.native_installed():
+            # The native addon owns the shared global dictation shortcut.
+            command.append("--no-hotkey")
         log = self.root / "launch.log"
         with log.open("wb") as output, _system_dlls():
             process = subprocess.Popen(command, cwd=package, env=environment, stdout=output, stderr=output)

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from ime.lexicon import LexiconStore
 from ime.pinyin import PinyinEngine, normalize, shuangpin_code
 from ime.settings import SettingsStore
-from ime.native_pinyin import decode, bridge_path
+from ime.native_pinyin import decode, bridge_path, predict as native_predict
 
 
 class InputEngineTests(unittest.TestCase):
@@ -123,18 +123,52 @@ class InputEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Jyutping dictionary is unavailable'):
             self.engine.candidates('nei5hou2', scheme='jyutping')
 
-    @unittest.skipUnless(bridge_path(), 'optional locally compiled libime bridge unavailable')
     def test_statistical_predictions_merge_without_duplicates(self):
-        predictions = self.engine.predict('中国', limit=5)
-        self.assertIn('人民', [c['text'] for c in predictions])
-        self.assertEqual(len({c['text'] for c in predictions}), len(predictions))
-        self.assertNotIn('中国', [c['text'] for c in predictions])
-        self.engine.learn('renmin', '人民', '中国')
+        statistical = [{'text': text, 'pinyin': ''}
+                       for text in ['人民', '中国', '传统', '人民', '文化']]
+        # Merge semantics must not depend on a distribution's language-model
+        # corpus, which can rank punctuation/function words above nouns.
+        with patch('ime.pinyin.statistical_predict', side_effect=lambda context, limit: statistical[:limit]) as predictor:
+            self.assertEqual(self.engine.predict('中国', limit=5),
+                             [{'text': text, 'pinyin': ''} for text in ['人民', '传统', '文化']])
+            predictor.assert_called_with('中国', 5)
+            self.engine.learn('renmin', '人民', '中国')
+            self.assertEqual(self.engine.predict('中国', limit=5),
+                             [{'text': '人民', 'pinyin': 'renmin'},
+                              {'text': '传统', 'pinyin': ''}, {'text': '文化', 'pinyin': ''}])
+            self.engine.learn('chuantong', '传统', '中国')
+            self.assertEqual(self.engine.predict('中国', limit=9, script='traditional'),
+                             [{'text': '人民', 'pinyin': 'renmin'},
+                              {'text': '傳統', 'pinyin': 'chuantong'}, {'text': '文化', 'pinyin': ''}])
+            self.assertEqual(self.engine.predict('中国', limit=2, script='traditional'),
+                             [{'text': '人民', 'pinyin': 'renmin'},
+                              {'text': '傳統', 'pinyin': 'chuantong'}])
+            predictor.assert_called_with('中国', 2)
+
+    @unittest.skipUnless(bridge_path(), 'optional locally compiled libime bridge unavailable')
+    def test_native_statistical_predictions_preserve_model_order(self):
+        statistical = native_predict('中国', limit=5)
+        self.assertTrue(statistical, 'Installed statistical model must produce continuations')
+        self.assertLessEqual(len(statistical), 5)
+        self.assertTrue(any(any('\u3400' <= ch <= '\u9fff' for ch in c['text'])
+                            for c in statistical), 'Continuations must include Chinese text')
+        expected = []
+        seen = {'中国'}
+        for candidate in statistical:
+            self.assertTrue(candidate['text'])
+            self.assertEqual(candidate['pinyin'], '')
+            if candidate['text'] not in seen:
+                expected.append(candidate)
+                seen.add(candidate['text'])
+        self.assertEqual(self.engine.predict('中国', limit=5), expected)
+        # An explicit commit takes priority over this model's actual ranking,
+        # and a suggestion learned from that ranking appears exactly once.
+        selected = expected[-1]['text']
+        self.engine.learn('selected', selected, '中国')
         merged = self.engine.predict('中国', limit=5)
-        self.assertEqual(merged[0]['text'], '人民')
-        self.assertEqual(sum(c['text'] == '人民' for c in merged), 1)
-        self.engine.learn('chuantong', '传统', '中国')
-        self.assertIn('傳統', [c['text'] for c in self.engine.predict('中国', limit=9, script='traditional')])
+        self.assertEqual(merged[0], {'text': selected, 'pinyin': 'selected'})
+        self.assertEqual([c['text'] for c in merged],
+                         [selected] + [c['text'] for c in expected if c['text'] != selected])
 
     def test_limits_and_types(self):
         self.assertEqual(self.engine.candidates('hello', limit=0), [])
